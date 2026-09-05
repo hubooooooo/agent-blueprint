@@ -4,6 +4,8 @@
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+📺 **教程视频**：[Bilibili · Agent Blueprint](https://www.bilibili.com/video/BV17RtD61ETm/)
+
 > 给它一个 PRD、一个需求点子、或一个可落地的 Agent 方向，它推导出架构方案、组件选型与代码骨架，直到一个能在真实环境运行的产品。
 
 **Python 3.10+ · macOS / Linux · MIT**

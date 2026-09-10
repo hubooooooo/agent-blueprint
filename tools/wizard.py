@@ -132,11 +132,8 @@ def configure_model() -> bool:
 
 
 def run(args: list[str]) -> None:
-    mock = not has_real_key()
-    if mock:
-        args = args + ["--mock"]
     print(f"\n{'=' * 46}", flush=True)
-    print("正在推导，请稍候…（" + ("离线演示，不花真实模型" if mock else "真实模型，首次稍慢") + "）", flush=True)
+    print("正在推导，请稍候…（真实模型，首次稍慢）", flush=True)
     print("=" * 46 + "\n", flush=True)
     subprocess.run([sys.executable, "-m", "blueprint", *args], cwd=ROOT, stdin=subprocess.DEVNULL)
 
@@ -191,11 +188,17 @@ def main() -> None:
     print("=" * 46)
 
     if not has_real_key():
-        print("\n还没有配置模型 API Key。")
-        if confirm("现在配置一个？（选 n 则用离线演示先体验流程）", default=True):
-            configure_model()
+        print("\n这个工具需要真实的模型 API Key（离线演示是假数据，没有参考价值）。")
+        print("推荐 DeepSeek：便宜、国内可直连，充值几块钱就能用很久。")
+        print("申请地址：https://platform.deepseek.com")
+        print("想先看看会拿到什么，可以打开 docs/examples/ 里的示例文档。")
+        if confirm("已经有 Key 了，现在配置？", default=True):
+            if not configure_model():
+                print("\n配置没成功。申请好 Key 后，重新双击本文件即可。")
+                return
         else:
-            print("将使用离线演示（结果只示意流程，不是真实分析）。")
+            print("\n请先到 https://platform.deepseek.com 申请 Key，再重新双击本文件。")
+            return
 
     while True:
         print(f"\n{LINE}")

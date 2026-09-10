@@ -1,0 +1,24 @@
+{
+  "features": {
+    "destructive_ops": "yes",
+    "audit_needed": "unknown",
+    "multi_step": "yes",
+    "context_heavy": "yes",
+    "large_knowledge": "yes",
+    "long_sessions": "unknown",
+    "cross_session_memory": "yes",
+    "persistent_goals": "unknown",
+    "slow_operations": "yes",
+    "scheduled": "no",
+    "parallel_isolated": "no",
+    "external_ecosystem": "no",
+    "fixed_orchestration": "yes",
+    "auto_completion": "unknown"
+  },
+  "components": {
+    "s01": "必选", "s02": "必选", "s03": "必选", "s04": "待确认", "s05": "必选", "s06": "必选",
+    "s07": "必选", "s08": "待确认", "s09": "必选", "s10": "待确认", "s11": "必选", "s12": "放弃",
+    "s13": "放弃", "s14": "放弃", "s15": "必选", "s16": "必选", "s17": "待确认"
+  },
+  "must_be_unknown_or_pending": []
+}

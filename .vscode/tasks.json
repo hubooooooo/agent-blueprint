@@ -4,7 +4,8 @@
     {
       "label": "一键初始化环境",
       "type": "shell",
-      "command": "bash ${workspaceFolder}/setup.sh",
+      "command": "bash",
+      "args": ["${workspaceFolder}/setup.sh"],
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",

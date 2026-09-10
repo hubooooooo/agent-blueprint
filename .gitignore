@@ -232,3 +232,6 @@ test_providers.py
 # Internal analysis artifacts
 analysis/
 analysis_progress.md
+
+# Blueprint 引擎输出
+out/

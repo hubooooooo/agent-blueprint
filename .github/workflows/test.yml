@@ -24,3 +24,6 @@ jobs:
 
       - name: Run Python smoke tests
         run: python -m pytest tests -q
+
+      - name: Run Blueprint offline evaluations
+        run: python -m blueprint eval

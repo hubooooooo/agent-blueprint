@@ -1,0 +1,7 @@
+{
+  "present_strong_or_weak": ["s01", "s02"],
+  "present_none": ["s03", "s04", "s09", "s12", "s13", "s14"],
+  "acceptance_fail": ["testable", "observable"],
+  "llm_sdk": "anthropic",
+  "note": "README 明说会删除文件和重启服务，所以 s03 应被判为 P0 缺失"
+}

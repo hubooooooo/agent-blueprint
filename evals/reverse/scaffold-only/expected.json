@@ -1,0 +1,7 @@
+{
+  "present_strong_or_weak": ["s01", "s02", "s03"],
+  "present_none": ["s09", "s12", "s13"],
+  "acceptance_fail": [],
+  "llm_sdk": "anthropic",
+  "note": "scaffold 有权限检查点、重试、日志、轨迹，但没有记忆/定时/团队；测试在仓库根 tests/ 里，因此单看 scaffold 目录 testable 只能是 fail 或 partial"
+}

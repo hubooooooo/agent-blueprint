@@ -1,0 +1,24 @@
+{
+  "features": {
+    "destructive_ops": "yes",
+    "audit_needed": "yes",
+    "multi_step": "no",
+    "context_heavy": "no",
+    "large_knowledge": "yes",
+    "long_sessions": "no",
+    "cross_session_memory": "later",
+    "persistent_goals": "no",
+    "slow_operations": "no",
+    "scheduled": "no",
+    "parallel_isolated": "no",
+    "external_ecosystem": "no",
+    "fixed_orchestration": "no",
+    "auto_completion": "later"
+  },
+  "components": {
+    "s01": "必选", "s02": "必选", "s03": "必选", "s04": "必选", "s05": "放弃", "s06": "放弃",
+    "s07": "必选", "s08": "放弃", "s09": "二期", "s10": "放弃", "s11": "放弃", "s12": "放弃",
+    "s13": "放弃", "s14": "放弃", "s15": "必选", "s16": "放弃", "s17": "二期"
+  },
+  "must_be_unknown_or_pending": ["孩子年龄", "交互形态", "照片"]
+}

@@ -224,6 +224,15 @@ Harness = 工具 + 知识 + 观察 + 行动接口 + 权限
 
 ## 八、快速开始
 
+统一入口是 [使用引导.md](使用引导.md)：告诉 AI 引擎目录及你的点子或目标项目目录，AI 按手册使用本地引擎。程序命令：
+
+```sh
+.venv/bin/python -m blueprint plan "你的点子" --mock
+.venv/bin/python -m blueprint audit ./scaffold --mock
+```
+
+上述 `--mock` 命令只验证流程。真实程序推导需要维护者配置模型接口；也可由当前 AI 按手册分析并注明执行方式。当前引擎交付 Step 1–4 的方案或反向差距报告；Step 5 代码生成是方案确认后的后续任务。
+
 ```sh
 cd agent-blueprint
 pip install -r requirements.txt

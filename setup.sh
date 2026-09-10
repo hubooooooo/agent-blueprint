@@ -5,24 +5,29 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 echo "==> 检查 Python ..."
-if ! command -v python3 &>/dev/null; then
-  echo "❌ 未找到 python3。请先安装 Python 3.10+："
+PY=""
+# macOS 系统自带 python3 常是 3.9，这里优先找 3.12 / 3.11 / 3.10
+for cand in python3.12 python3.11 python3.10 python3; do
+  if command -v "$cand" &>/dev/null; then
+    maj=$("$cand" -c 'import sys; print(sys.version_info.major)' 2>/dev/null || echo 0)
+    min=$("$cand" -c 'import sys; print(sys.version_info.minor)' 2>/dev/null || echo 0)
+    if [ "$maj" -gt 3 ] || { [ "$maj" -eq 3 ] && [ "$min" -ge 10 ]; }; then
+      PY="$cand"
+      break
+    fi
+  fi
+done
+if [ -z "$PY" ]; then
+  echo "❌ 未找到 Python 3.10+。请先安装："
   echo "   - 官网安装包：https://www.python.org/downloads/ （macOS 选 macOS installer）"
-  echo "   - 或 Homebrew：brew install python"
+  echo "   - 或 Homebrew：brew install python@3.12"
   exit 1
 fi
-
-PY_MAJOR=$(python3 -c 'import sys; print(sys.version_info.major)')
-PY_MINOR=$(python3 -c 'import sys; print(sys.version_info.minor)')
-if [ "$PY_MAJOR" -lt 3 ] || { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 10 ]; }; then
-  echo "❌ Python 版本过低（当前 ${PY_MAJOR}.${PY_MINOR}），需要 3.10+"
-  exit 1
-fi
-echo "✅ Python ${PY_MAJOR}.${PY_MINOR}"
+echo "✅ 使用 $(command -v "$PY")（$("$PY" --version)）"
 
 echo "==> 创建虚拟环境 .venv ..."
 if [ ! -d ".venv" ]; then
-  python3 -m venv .venv
+  "$PY" -m venv .venv
   echo "    已创建 .venv"
 else
   echo "    .venv 已存在，跳过"
@@ -43,4 +48,4 @@ fi
 echo ""
 echo "🎉 环境就绪！下一步："
 echo "   1. 打开 .env 填入 ANTHROPIC_API_KEY（和 MODEL_ID）"
-echo "   2. 运行：.venv/bin/python s01_agent_loop/code.py"
+echo "   2. 阅读 使用引导.md，或运行：.venv/bin/python -m blueprint --help"

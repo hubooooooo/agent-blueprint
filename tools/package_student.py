@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ROOT_FILES = (
     "README.md", "使用引导.md", "BLUEPRINT.md", "LICENSE",
     "requirements.txt", "setup.sh", ".env.example", ".gitignore",
+    "启动引擎.command",
 )
 PATTERNS = (
     ".vscode/*.json",
@@ -23,7 +24,7 @@ PATTERNS = (
     "evals/forward/*/input.md", "evals/forward/*/expected.json",
     "evals/reverse/*/expected.json", "evals/reverse/*/target.txt",
     "evals/reverse/*/README.md", "evals/reverse/*/src/*.py",
-    "tests/test_*.py", "tools/package_student.py",
+    "tests/test_*.py", "tools/package_student.py", "tools/wizard.py",
 )
 
 

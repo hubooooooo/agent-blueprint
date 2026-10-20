@@ -47,8 +47,8 @@ flowchart LR
 双击 **`启动引擎.command`**，弹出终端窗口，一问一答带你走完全程：
 
 1. 选模型服务商（推荐 **DeepSeek**，便宜）→ 粘贴 API Key → 自动测试连接；
-2. 选「生成方案」或「检查差距」→ 粘贴想法或项目路径；
-3. 自动推导，结果存进 `out/` 并提示打开。
+2. 选「开始一个产品」输入产品名和一句话想法，或「加新需求」「检查骨架」「只生成方案」「检查外部项目」；
+3. 自动推导，结果存进 `out/<产品名>/` 并提示打开。
 
 首次双击会自动检测 Python，没装会帮你下载安装。想先看结果长什么样？看 [输出示例](docs/examples/README.md)。
 
@@ -62,6 +62,8 @@ flowchart LR
 我的点子是：……（或：请检查这个项目：/你的路径/目标项目）
 请生成方案（或：生成差距报告），告诉我结果存在哪里。
 ```
+
+想从点子一路做到代码骨架、之后还要反复加需求？说「按产品循环工作，产品名 ……」，PRD、方案、骨架、迭代记录会全部落在 `out/<产品名>/` 里，详见 [使用引导.md](使用引导.md) 的「产品循环」。
 
 > 普通网页聊天窗口读不了本地文件，仅给路径是不够的。
 
@@ -80,6 +82,11 @@ bash setup.sh
 
 # 中断后原目录续跑
 .venv/bin/python -m blueprint plan docs/prd-toy-theater.md -o out/my-plan --resume
+
+# 产品循环：点子 → PRD → 方案 → 骨架 → 验证 → 新需求，全部在 out/<产品名>/ 里
+.venv/bin/python -m blueprint init "酒馆搭子" "一句话点子" --plan     # 建工作区并推导
+.venv/bin/python -m blueprint verify out/酒馆搭子                    # PRD 对照 skeleton/
+.venv/bin/python -m blueprint revise out/酒馆搭子 "新需求：……"       # PRD 升版 + 重推方案
 ```
 
 真实推导需要在 `.env` 配置 `ANTHROPIC_API_KEY`、`MODEL_ID`（支持 Anthropic 及 DeepSeek / 智谱 / Kimi / MiniMax 等兼容网关）。
@@ -94,6 +101,8 @@ bash setup.sh
 | [BLUEPRINT.md](BLUEPRINT.md) | 五步推导、五要素、七层架构与组件选型表 |
 | [blueprint/](blueprint/) | 正反向引擎：规则、扫描、审稿、断点续跑 |
 | [s01–s17](BLUEPRINT.md) | 17 个组件的说明、参考实现与图示 |
+| [common/](common/) | 17 个组件共用的启动层：读 .env、检查 Key、友好报错、REPL |
+| s13 / s15 的 `*_parts/` | 两个大章节按小节拆开的代码，`code.py` 按顺序载入 |
 | [scaffold/](scaffold/) | 后续开发的项目模板 |
 | [skills/](skills/) | 构建 Agent、代码检查等技能示例 |
 | [docs/](docs/) | 入门指南、输出示例、维护手册 |
@@ -118,7 +127,7 @@ python3 tools/package_student.py        # 生成学生压缩包
 |---|---|
 | 第一次用 | [使用引导.md](使用引导.md) → [输出示例](docs/examples/README.md) |
 | 只有一个模糊想法 | [小白入门指南](docs/beginner-guide.md) |
-| 看一份完整方案长什么样 | [玩具剧场方案](docs/prd-toy-theater.md) |
+| 看一份完整方案长什么样 | [真实运行产物](docs/examples/README.md)（未经修改）· [人工整理版](docs/prd-toy-theater.md) |
 | 改规则 / 换模型 / 分发 | [维护手册](docs/维护手册.md) |
 
 ---

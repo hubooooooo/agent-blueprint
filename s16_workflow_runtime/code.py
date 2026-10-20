@@ -775,22 +775,35 @@ def run_workflow_sync(**tool_input):
         return f"Error: {exc}"
 
 
+def add_workflow_tool(tools, handlers):
+    """Tool-pool extension: append the Workflow tool once and bind its handler."""
+    if not any(tool.get("name") == "Workflow" for tool in tools):
+        tools.append(WORKFLOW_TOOL)
+    handlers["Workflow"] = run_workflow_sync
+    return tools, handlers
+
+
 def install_workflow_tool(host):
-    """Extend the s15 host tool pool without changing its dispatch loop."""
+    """Extend the s15 host tool pool without changing its dispatch loop.
+
+    Preferred path: the host exposes register_tool_extension() (s15), an explicit extension
+    point evaluated inside assemble_tool_pool(). Fallback for minimal hosts that only expose
+    assemble_tool_pool(): wrap that function.
+    """
     global RUNNER_FACTORY
     RUNNER_FACTORY = lambda: AnthropicAgentRunner(host.client, host.MODEL)
     if getattr(host, "_workflow_tool_installed", False):
         return
-    base_assemble = host.assemble_tool_pool
+    register = getattr(host, "register_tool_extension", None)
+    if callable(register):
+        register(add_workflow_tool)
+    else:
+        base_assemble = host.assemble_tool_pool
 
-    def assemble_with_workflow():
-        tools, handlers = base_assemble()
-        if not any(tool.get("name") == "Workflow" for tool in tools):
-            tools.append(WORKFLOW_TOOL)
-        handlers["Workflow"] = run_workflow_sync
-        return tools, handlers
+        def assemble_with_workflow():
+            return add_workflow_tool(*base_assemble())
 
-    host.assemble_tool_pool = assemble_with_workflow
+        host.assemble_tool_pool = assemble_with_workflow
     host._workflow_tool_installed = True
 
 
@@ -836,6 +849,7 @@ async def run_demo(argv):
 def run_cli():
     """Run the cumulative s15 host with Workflow added to its tool pool."""
     host = load_integrated_host()
+    host.require_credentials()          # reuse common.bootstrap imported by s15
     install_workflow_tool(host)
     host.CLI_ACTIVE = True
     host.start_runtime_services()
@@ -861,7 +875,7 @@ def run_cli():
             turn_start = len(history)
             session_state["active_user_request"] = query
             history.append({"role": "user", "content": query})
-            host.agent_loop(history, context, query)
+            host.guard(lambda: host.agent_loop(history, context, query))
             context = host.update_context(context, history)
             host.print_turn_assistants(history, turn_start)
         print()

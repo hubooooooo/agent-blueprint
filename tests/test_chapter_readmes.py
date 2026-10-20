@@ -29,3 +29,5 @@ def test_chapter_readmes_are_written_in_chinese() -> None:
 def test_every_chapter_script_compiles_on_python_311() -> None:
     for chapter in CHAPTERS:
         _ = py_compile.compile(str(chapter / "code.py"), doraise=True)
+        for part in sorted(chapter.glob("s[0-9][0-9]_parts/p[0-9][0-9]_*.py")):
+            _ = py_compile.compile(str(part), doraise=True)

@@ -2,7 +2,8 @@
 
 离线（默认）：
   1. 规则回归：expected.features → select_components == expected.components
-  2. 管线回归：mock 跑通正向三题、反向两题，文档必须包含关键章节
+  2. 管线回归：mock 跑通正向三题、反向两题，文档必须包含关键章节；
+     并守住下限：标准答案判「放弃」的组件，mock 不得判成必选/二期
 真模型（--real）：
   正向三题各跑一次「需求拆解」，统计特征判断与标准答案的一致率；不跑后续阶段以省钱。
 """
@@ -56,11 +57,16 @@ def check_forward_pipeline(case: Path, runner, out_dir: Path) -> list[str]:
     problems = [f"文档缺少章节「{s}」" for s in PLAN_SECTIONS if s not in content]
     if len(plan.components) != 17:
         problems.append(f"组件数应为 17，实际 {len(plan.components)}")
+    expected = json.loads((case / "expected.json").read_text(encoding="utf-8"))
     if getattr(runner, "name", "") != "mock":      # 语义断言只对真模型有意义
-        expected = json.loads((case / "expected.json").read_text(encoding="utf-8"))
         for kw in expected.get("must_be_unknown_or_pending", []):
             if kw not in content:
                 problems.append(f"文档应提到待确认项「{kw}」")
+    else:                                          # mock 只守下限：标准答案「放弃」的组件不得被选上
+        got = {c["id"]: c["decision"] for c in plan.components}
+        for cid, want in expected["components"].items():
+            if want == "放弃" and got.get(cid) in ("必选", "二期"):
+                problems.append(f"{cid}: 标准答案为放弃，mock 却判 {got[cid]}（启发式过度激进）")
     return problems
 
 

@@ -104,6 +104,44 @@ _FEATURE = {
 
 FACT_IDS = ["goal", "users", "core_loop", "deliverable", "boundaries", "constraints"]
 
+# 14 个特征 id 是选型规则的输入，缺一个就会被当成 unknown，所以必须作为必填键校验。
+from blueprint.knowledge import FEATURES as _FEATURES  # noqa: E402
+
+FEATURE_IDS = [f.id for f in _FEATURES]
+_COMPONENT_TO_FEATURE = {f.component: f.id for f in _FEATURES}
+_FEATURE_VALUES = ("yes", "no", "later", "unknown")
+
+
+def coerce_stage_output(stage: str, data: Any) -> Any:
+    """在 schema 校验之前，把模型输出里「结构对、写法偏」的地方拉回标准形态。
+
+    目前只处理 features 块（extract / infer 阶段）：
+    - 键写成组件编号（s03）而不是特征 id（destructive_ops）→ 按映射表改回来；
+      真实模型跑题库时出现过这种输出，当时所有特征都被当成 unknown，整份方案全部「待确认」。
+    - 值写成裸字符串（"yes"）而不是对象 → 包成 {"value": "yes", "evidence": ""}。
+    - 既不是特征 id 也不是组件编号的键 → 丢弃，避免多余字段触发校验失败。
+    不补缺失的键：缺键交给 required 校验去触发一次纠错重试，让模型自己补。
+    """
+    base = stage.removesuffix("_retry")
+    if base not in ("extract", "infer") or not isinstance(data, dict):
+        return data
+    features = data.get("features")
+    if not isinstance(features, dict):
+        return data
+    fixed: dict[str, Any] = {}
+    for key, value in features.items():
+        k = str(key).strip()
+        fid = k if k in FEATURE_IDS else _COMPONENT_TO_FEATURE.get(k.lower())
+        if fid is None:
+            continue
+        if isinstance(value, str):
+            value = {"value": value.strip().lower(), "evidence": ""}
+        if fid not in fixed:            # 标准键优先，不被别名覆盖
+            fixed[fid] = value
+    data = dict(data)
+    data["features"] = fixed
+    return data
+
 EXTRACT_SCHEMA = {
     "type": "object",
     "required": ["title", "one_liner", "facts", "features", "unknowns"],
@@ -116,7 +154,7 @@ EXTRACT_SCHEMA = {
             "required": FACT_IDS,
             "properties": {k: _FACT for k in FACT_IDS},
         },
-        "features": {"type": "object", "additionalProperties": _FEATURE},
+        "features": {"type": "object", "required": FEATURE_IDS, "additionalProperties": _FEATURE},
         "unknowns": {"type": "array", "items": {"type": "string"}},
     },
 }

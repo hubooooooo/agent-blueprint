@@ -69,7 +69,7 @@ class Feature:
 FEATURES: list[Feature] = [
     Feature("destructive_ops", "是否涉及破坏性或敏感操作（删除、写入外部系统、支付、发送消息、隐私数据）？", "s03"),
     Feature("audit_needed", "是否需要审计、拦截、埋点、合规记录？", "s04"),
-    Feature("multi_step", "单次交付是否多步骤、需要跟踪进度？", "s05"),
+    Feature("multi_step", "单次交付是否需要先列计划再逐步推进并跟踪进度（多轮、可中断、要汇报进展）？固定顺序调用几个工具不算。", "s05"),
     Feature("context_heavy", "是否会出现上下文爆炸的子任务，或可并行的探索型子任务？", "s06"),
     Feature("large_knowledge", "领域知识库是否庞大、需要按需加载？", "s07"),
     Feature("long_sessions", "会话是否很长、工具输出或日志量是否很大？", "s08"),
@@ -79,7 +79,7 @@ FEATURES: list[Feature] = [
     Feature("scheduled", "是否需要定时自动触发？", "s12"),
     Feature("parallel_isolated", "是否需要多任务并行且各自隔离工作区（多 Agent 团队）？", "s13"),
     Feature("external_ecosystem", "是否需要接入外部工具生态（MCP、第三方插件）？", "s14"),
-    Feature("fixed_orchestration", "编排形态是否固定、适合写死成工作流？", "s16"),
+    Feature("fixed_orchestration", "输入是否把流程写成固定的阶段序列（如「上传→翻译→标注→入库」）且各阶段无需模型临场决策？只描述产品体验、或流程里有模型判断分支的不算。", "s16"),
     Feature("auto_completion", "是否需要自动判断「何时算完成」（独立评估器）？", "s17"),
 ]
 

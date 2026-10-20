@@ -13,9 +13,9 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 from pathlib import Path
 
-from blueprint.schema import validate
+from blueprint.schema import coerce_stage_output, validate
 
-DEFAULT_MODEL = "claude-opus-5"
+DEFAULT_MODEL = "claude-sonnet-4-6"   # 与 .env.example、scaffold 保持一致；tests/test_config_consistency.py 守护
 
 
 def load_config() -> None:
@@ -87,9 +87,26 @@ def extract_json(text: str) -> Any:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
-    start = text.find("{")
-    if start < 0:
+    try:                                   # 字符串里出现裸换行 / 制表符时，宽松模式仍可解析
+        return json.loads(text, strict=False)
+    except json.JSONDecodeError:
+        pass
+    if "{" not in text:
         raise StageOutputInvalid("输出里没有 JSON 对象")
+    # 模型偶尔会在 JSON 前面输出一段带花括号的解释；从每个左花括号起各试一次，取第一个能闭合且能解析的。
+    last_error = "JSON 对象未闭合（常见原因：字符串里有未转义的英文双引号，或输出被截断）"
+    for start in (i for i, ch in enumerate(text) if ch == "{"):
+        end = _matching_brace(text, start)
+        if end is None:
+            continue
+        try:
+            return json.loads(text[start:end + 1], strict=False)
+        except json.JSONDecodeError as exc:
+            last_error = f"JSON 语法错误：{exc.msg}（第 {exc.lineno} 行第 {exc.colno} 列）"
+    raise StageOutputInvalid(last_error)
+
+
+def _matching_brace(text: str, start: int) -> int | None:
     depth = 0
     in_str = False
     escape = False
@@ -110,8 +127,8 @@ def extract_json(text: str) -> Any:
         elif ch == "}":
             depth -= 1
             if depth == 0:
-                return json.loads(text[start:i + 1])
-    raise StageOutputInvalid("JSON 对象未闭合")
+                return i
+    return None
 
 
 class AnthropicRunner:
@@ -120,7 +137,7 @@ class AnthropicRunner:
     name = "anthropic"
 
     def __init__(self, model: str | None = None, budget: Budget | None = None, client: Any = None,
-                 max_tokens: int = 16000):
+                 max_tokens: int | None = None):
         from anthropic import Anthropic
         load_config()
         if client is None and not has_credentials():
@@ -129,38 +146,63 @@ class AnthropicRunner:
         self.budget = budget or Budget()
         self.client = client or Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"),
                                          timeout=120.0, max_retries=0)
-        self.max_tokens = max_tokens
+        # 带思考过程的模型（如 deepseek-v4）思考 token 也计入 max_tokens，长 PRD 时 16000 可能不够；
+        # 可用环境变量 BLUEPRINT_MAX_OUTPUT_TOKENS 调大。
+        self.max_tokens = max_tokens or int(os.getenv("BLUEPRINT_MAX_OUTPUT_TOKENS", "16000"))
+        self.attempts: list[dict] = []      # 最近一次 complete() 的每次尝试：原文、stop_reason、错误，供排障落盘
 
     def complete(self, stage: str, system: str, prompt: str, schema: dict) -> dict:
         messages = [{"role": "user", "content": prompt}]
         last_errors: list[str] = []
-        for _attempt in range(2):
+        self.attempts = []
+        max_tokens = self.max_tokens
+        format_retries = 0
+        truncation_retries = 0
+        while True:
             self.budget.check()
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=self.max_tokens,
+                max_tokens=max_tokens,
                 system=system,
                 messages=messages,
             )
             usage = getattr(response, "usage", None)
-            self.budget.record(stage,
-                               getattr(usage, "input_tokens", 0) or 0,
-                               getattr(usage, "output_tokens", 0) or 0)
-            if getattr(response, "stop_reason", None) == "refusal":
+            output_tokens = getattr(usage, "output_tokens", 0) or 0
+            self.budget.record(stage, getattr(usage, "input_tokens", 0) or 0, output_tokens)
+            stop_reason = getattr(response, "stop_reason", None)
+            if stop_reason == "refusal":
                 raise StageOutputInvalid(f"模型拒绝了阶段 {stage} 的请求")
             text = "".join(getattr(b, "text", "") for b in response.content
                            if getattr(b, "type", None) == "text")
+            record = {"stage": stage, "stop_reason": stop_reason, "output_tokens": output_tokens,
+                      "text": text, "errors": []}
+            self.attempts.append(record)
+            if stop_reason == "max_tokens":
+                record["errors"] = [f"输出被截断（max_tokens={max_tokens}，本次输出 {output_tokens} tokens）"]
+                if truncation_retries == 0:          # 带思考过程的模型常见：自动加倍预算再试一次
+                    truncation_retries += 1
+                    max_tokens *= 2
+                    continue
+                raise StageOutputInvalid(
+                    f"阶段 {stage} 的输出被截断：模型用满了 max_tokens={max_tokens}"
+                    f"（含思考过程，已自动加倍重试过一次）。"
+                    f"请设置环境变量 BLUEPRINT_MAX_OUTPUT_TOKENS={max_tokens * 2} 后加 --resume 重试。")
             try:
-                data = extract_json(text)
+                data = coerce_stage_output(stage, extract_json(text))
             except (StageOutputInvalid, json.JSONDecodeError) as exc:
-                last_errors = [str(exc)]
+                last_errors = [f"JSON 解析失败：{exc}"]
             else:
                 last_errors = validate(schema, data)
                 if not last_errors:
                     return data
+            record["errors"] = last_errors
+            if format_retries >= 1:
+                break
+            format_retries += 1
             messages = messages + [
                 {"role": "assistant", "content": text or "(空)"},
                 {"role": "user", "content": "上一次输出不符合要求：\n- " + "\n- ".join(last_errors)
-                 + "\n请只输出一个符合结构的 JSON 对象，不要任何其他文字。"},
+                 + "\n请重新输出完整的 JSON 对象，并检查：字符串内的英文双引号必须写成 \\\"，"
+                   "中文引号用「」；不要输出 Markdown 围栏或任何解释文字；所有必填键都要有。"},
             ]
         raise StageOutputInvalid(f"阶段 {stage} 两次输出都不合格式：{last_errors}")

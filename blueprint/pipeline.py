@@ -69,7 +69,13 @@ class StageRunner:
                 pass
             self.log(f"  ↻ {label or stage}：输入、配置或缓存已变化，重新执行")
         self.log(f"  ▶ {label or stage}")
-        data = self.runner.complete(stage, SYSTEM, prompt, schema)
+        try:
+            data = self.runner.complete(stage, SYSTEM, prompt, schema)
+        except StageOutputInvalid as exc:
+            dump = self._dump_failed_attempts(stage)
+            if dump:
+                self.log(f"  ✗ 模型原始输出已保存，便于排查：{dump}")
+            raise exc
         errors = validate(schema, data)
         if errors:
             raise StageOutputInvalid(f"阶段 {stage} 输出不合格式：{errors}")
@@ -77,6 +83,17 @@ class StageRunner:
         atomic_write(meta_path, json.dumps({"signature": signature, "output": _digest(data)}))
         self.chain = _digest([signature, data])
         return data
+
+    def _dump_failed_attempts(self, stage: str) -> Path | None:
+        attempts = getattr(self.runner, "attempts", None)
+        if not attempts:
+            return None
+        path = self.stages_dir / f"{stage}.failed.json"
+        try:
+            atomic_write(path, json.dumps(attempts, ensure_ascii=False, indent=2))
+        except OSError:
+            return None
+        return path
 
     def save(self, name: str, content: str) -> Path:
         path = self.out_dir / name

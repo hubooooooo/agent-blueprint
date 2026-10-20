@@ -21,7 +21,7 @@ from blueprint.mock import MockRunner                  # noqa: E402
 from blueprint.reverse import run_audit                # noqa: E402
 from blueprint.rules import select_components          # noqa: E402
 from blueprint.scanner import scan_project             # noqa: E402
-from blueprint.schema import EXTRACT_SCHEMA, validate  # noqa: E402
+from blueprint.schema import FEATURE_IDS, EXTRACT_SCHEMA, validate  # noqa: E402
 
 
 # ---------------------------------------------------------------- 知识层
@@ -173,7 +173,8 @@ class _FakeClient:
 def _extract_ok():
     facts = {k: {"value": "x", "status": "明确", "source": ""} for k in
              ["goal", "users", "core_loop", "deliverable", "boundaries", "constraints"]}
-    return json.dumps({"title": "t", "one_liner": "o", "facts": facts, "features": {}, "unknowns": []})
+    features = {fid: {"value": "unknown", "evidence": ""} for fid in FEATURE_IDS}
+    return json.dumps({"title": "t", "one_liner": "o", "facts": facts, "features": features, "unknowns": []})
 
 
 def test_anthropic_runner_retries_once_on_bad_json(monkeypatch):

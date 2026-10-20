@@ -34,16 +34,15 @@ except ImportError:
     pass
 
 from anthropic import Anthropic
-from dotenv import load_dotenv
+import sys
 
-load_dotenv(override=True)
-if os.getenv("ANTHROPIC_BASE_URL"):
-    os.environ.pop("ANTHROPIC_AUTH_TOKEN", None)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # make the root-level common/ package importable
+from common.bootstrap import make_client, resolve_model, run_repl, print_last_text, require_credentials, guard  # noqa: E402
 
 WORKDIR = Path.cwd()
 DURABLE_PATH = WORKDIR / ".scheduled_tasks.json"
-client = Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"))
-MODEL = os.environ["MODEL_ID"]
+client = make_client()
+MODEL = resolve_model()
 
 SYSTEM = (
     f"You are a coding agent at {WORKDIR}. Use tools to solve tasks. "
@@ -754,6 +753,7 @@ def stop_runtime_threads():
 if __name__ == "__main__":
     print("s12: Cron Scheduler - run prompts on a local schedule")
     print("Enter a question, press Enter to send. Type q to quit.\n")
+    require_credentials()
     start_runtime_threads()
     try:
         while True:
@@ -764,6 +764,6 @@ if __name__ == "__main__":
             if query.strip().lower() in ("q", "exit", ""):
                 break
             with agent_lock:
-                run_agent_turn_locked(query)
+                guard(lambda: run_agent_turn_locked(query))
     finally:
         stop_runtime_threads()

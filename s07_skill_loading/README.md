@@ -133,4 +133,4 @@ python s07_skill_loading/code.py
 
 s08 Context Compact → 缩短较早的消息，为后续调用保留上下文空间。
 
-
+> 运行方式：在仓库根目录执行 `python s07_skill_loading/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

@@ -184,3 +184,4 @@ python s14_mcp_plugin/code.py
 
 目前，MCP 还是一条独立的独立分支。s15 Integrated Harness 会把基础工具、Hooks、Skills、Context、Memory、Task、Background、Cron、Teams 和 MCP 放进同一个运行时。
 
+> 运行方式：在仓库根目录执行 `python s14_mcp_plugin/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

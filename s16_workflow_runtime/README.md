@@ -228,7 +228,7 @@ async def sample_workflow(ctx, args):
 | 多 agent | s06 子 agent，一次性派出去 | 通过 agent-runner 边界执行脚本化、可续跑的调用 |
 | 新增机制 | — | 编排原语、宿主 registry 与工具适配器、任务生命周期、进度事件、journal/续跑、结构化输出 |
 
-s16 不替换主循环，它只是在工具层暴露 `Workflow`，背后启动一个本地 workflow 运行时：一份保存好的脚本通过 agent-runner 边界协调 N 次调用。s06 的子 agent 是模型临场派一次；s16 把编排写成可续跑的宿主代码。
+s16 不替换主循环，它只是在工具层暴露 `Workflow`（通过 s15 的 `register_tool_extension()` 注册一个 `add_workflow_tool` 扩展，宿主没有这个接口时才退回包一层 `assemble_tool_pool`），背后启动一个本地 workflow 运行时：一份保存好的脚本通过 agent-runner 边界协调 N 次调用。s06 的子 agent 是模型临场派一次；s16 把编排写成可续跑的宿主代码。
 
 ## 试一下
 
@@ -244,3 +244,4 @@ python s16_workflow_runtime/code.py resume   # 断点续跑
 
 [s17 Goal Loop](../s17_goal_loop/) 会使用一个更小、独立的循环检查既定目标是否已经达成，并据此决定是否还需要下一轮。
 
+> 运行方式：在仓库根目录执行 `python s16_workflow_runtime/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

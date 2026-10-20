@@ -13,7 +13,7 @@ ENV_PATH = ROOT / ".env"
 
 PROVIDERS = {
     "1": {"key": "deepseek", "name": "DeepSeek（推荐）", "base": "https://api.deepseek.com/anthropic",
-          "model": "deepseek-chat", "key_page": "https://platform.deepseek.com"},
+          "model": "deepseek-v4-flash", "key_page": "https://platform.deepseek.com"},
     "2": {"key": "glm", "name": "智谱 GLM", "base": "https://open.bigmodel.cn/api/anthropic",
           "model": "glm-5.2", "key_page": "https://open.bigmodel.cn"},
     "3": {"key": "kimi", "name": "Kimi 月之暗面", "base": "https://api.moonshot.cn/anthropic",
@@ -146,8 +146,8 @@ def latest_output() -> Path | None:
     return max(files, key=lambda p: p.stat().st_mtime) if files else None
 
 
-def after_run() -> None:
-    latest = latest_output()
+def after_run(preferred: Path | None = None) -> None:
+    latest = preferred if preferred and preferred.exists() else latest_output()
     if latest:
         print(f"\n✅ 结果文件：{latest}")
         if confirm("现在打开看看？", default=True):
@@ -182,6 +182,63 @@ def do_audit() -> None:
     after_run()
 
 
+def list_workspaces() -> list[Path]:
+    out = ROOT / "out"
+    return sorted((p.parent for p in out.glob("*/PRD.md")), key=lambda p: p.name) if out.exists() else []
+
+
+def pick_workspace() -> Path | None:
+    spaces = list_workspaces()
+    if not spaces:
+        print("\nout/ 里还没有产品工作区。先选「1」从一个想法开始。")
+        return None
+    print("\n已有的产品：")
+    for i, ws in enumerate(spaces, 1):
+        print(f"  {i}. {ws.name}")
+    choice = ask("请输入数字：")
+    if choice.isdigit() and 1 <= int(choice) <= len(spaces):
+        return spaces[int(choice) - 1]
+    print("没选中。")
+    return None
+
+
+def do_init() -> None:
+    print(f"\n{LINE}")
+    print("从一个想法开始一个产品（PRD、方案、骨架、迭代记录都放在 out/<产品名>/）")
+    print(LINE)
+    name = ask_required("给产品起个名字：")
+    idea = ask_required("一句话说说你的想法：")
+    run(["init", name, idea, "--plan"])
+    import re as _re
+    slug = _re.sub(r"[^\w一-鿿-]+", "-", name.strip())[:40].strip("-")
+    after_run(ROOT / "out" / slug / "方案.md")
+    print("\n下一步：回答方案里的待确认问题，然后让 AI 按方案把代码骨架写到 skeleton/ 里。")
+
+
+def do_revise() -> None:
+    print(f"\n{LINE}")
+    print("给已有产品加新需求（PRD 升版 → 重推方案 → 记录选型变化）")
+    print(LINE)
+    ws = pick_workspace()
+    if ws is None:
+        return
+    req = ask_required("新需求（一句话或一段话）：")
+    run(["revise", str(ws), req])
+    after_run(ws / "方案.md")
+    print("\n下一步：让 AI 读 迭代记录.md 最新一条和 PRD.md 第 7 节，增量更新 skeleton/。")
+
+
+def do_verify() -> None:
+    print(f"\n{LINE}")
+    print("用 PRD 对照代码骨架做差距检查")
+    print(LINE)
+    ws = pick_workspace()
+    if ws is None:
+        return
+    run(["verify", str(ws)])
+    after_run(ws / "verify" / "差距报告.md")
+
+
 def main() -> None:
     print(f"\n{'=' * 46}")
     print("Agent Blueprint 引导工具")
@@ -203,22 +260,31 @@ def main() -> None:
     while True:
         print(f"\n{LINE}")
         print("你想做什么？")
-        print("  1. 我有一个想法 / 需求文档 → 生成方案")
-        print("  2. 我有一个代码项目 → 检查差距")
-        print("  3. 重新配置模型")
+        print("  1. 我有一个想法 → 开始一个产品（建工作区 + 生成方案）")
+        print("  2. 已有产品，我有新需求 → 升版 PRD、重推方案")
+        print("  3. 已有产品，检查代码骨架是否对得上 PRD")
+        print("  4. 只生成一份方案（不建工作区）")
+        print("  5. 我有一个外部代码项目 → 检查差距")
+        print("  6. 重新配置模型")
         print("  0. 退出")
         choice = ask("请输入数字：")
         if choice == "1":
-            do_plan()
+            do_init()
         elif choice == "2":
-            do_audit()
+            do_revise()
         elif choice == "3":
+            do_verify()
+        elif choice == "4":
+            do_plan()
+        elif choice == "5":
+            do_audit()
+        elif choice == "6":
             configure_model()
         elif choice == "0":
             print("\n再见！")
             break
         else:
-            print("请输入 0–3 之间的数字。")
+            print("请输入 0–6 之间的数字。")
 
 
 if __name__ == "__main__":

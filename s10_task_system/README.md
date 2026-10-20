@@ -200,4 +200,4 @@ python s10_task_system/code.py
 
 s11 Background Tasks → 把慢操作放到后台。Agent 可以继续处理其他任务，后台执行完成后再接收通知。
 
-
+> 运行方式：在仓库根目录执行 `python s10_task_system/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

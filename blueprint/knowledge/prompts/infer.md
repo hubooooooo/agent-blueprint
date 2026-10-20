@@ -11,6 +11,8 @@
 {features}
 
 每个特征输出 {{"value": "yes" | "no" | "later" | "unknown", "evidence": 一句话依据}}。
+features 的键必须是上面列出的 feature_id（如 destructive_ops），**不要用组件编号（如 s03）作键**，14 个特征一个都不能少。
+判「yes」要能从 README 或代码线索里指出依据；只是「这类产品一般会有」而材料没有任何体现的，写 unknown 并在 evidence 里说明是推测。
 
 ## 待确认清单
 项目材料没有回答的问题，写成向项目作者提问的句子。

@@ -2,23 +2,37 @@
   "features": {
     "destructive_ops": "yes",
     "audit_needed": "yes",
-    "multi_step": "unknown",
-    "context_heavy": "unknown",
+    "multi_step": "no",
+    "context_heavy": "no",
     "large_knowledge": "yes",
-    "long_sessions": "unknown",
-    "cross_session_memory": "unknown",
-    "persistent_goals": "unknown",
-    "slow_operations": "unknown",
+    "long_sessions": "no",
+    "cross_session_memory": "no",
+    "persistent_goals": "no",
+    "slow_operations": "no",
     "scheduled": "yes",
     "parallel_isolated": "no",
     "external_ecosystem": "no",
-    "fixed_orchestration": "unknown",
-    "auto_completion": "unknown"
+    "fixed_orchestration": "no",
+    "auto_completion": "no"
   },
   "components": {
-    "s01": "必选", "s02": "必选", "s03": "必选", "s04": "必选", "s05": "待确认", "s06": "待确认",
-    "s07": "必选", "s08": "待确认", "s09": "待确认", "s10": "待确认", "s11": "待确认", "s12": "必选",
-    "s13": "放弃", "s14": "放弃", "s15": "必选", "s16": "待确认", "s17": "待确认"
+    "s01": "必选",
+    "s02": "必选",
+    "s03": "必选",
+    "s04": "必选",
+    "s05": "放弃",
+    "s06": "放弃",
+    "s07": "必选",
+    "s08": "放弃",
+    "s09": "放弃",
+    "s10": "放弃",
+    "s11": "放弃",
+    "s12": "必选",
+    "s13": "放弃",
+    "s14": "放弃",
+    "s15": "必选",
+    "s16": "放弃",
+    "s17": "放弃"
   },
   "must_be_unknown_or_pending": []
 }

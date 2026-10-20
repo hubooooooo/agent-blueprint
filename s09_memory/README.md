@@ -185,3 +185,4 @@ Memory 解决了跨会话保留信息的问题，但复杂任务还需要记录�
 
 s10 Task System → 把任务、状态和依赖关系保存到磁盘。
 
+> 运行方式：在仓库根目录执行 `python s09_memory/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

@@ -148,4 +148,4 @@ python s02_tool_use/code.py
 
 s03 Permission → 在工具执行之前加一道门：这个操作安全吗？需要用户批准吗？
 
-
+> 运行方式：在仓库根目录执行 `python s02_tool_use/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

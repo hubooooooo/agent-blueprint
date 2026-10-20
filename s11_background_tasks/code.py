@@ -31,15 +31,14 @@ except ImportError:
     pass
 
 from anthropic import Anthropic
-from dotenv import load_dotenv
+import sys
 
-load_dotenv(override=True)
-if os.getenv("ANTHROPIC_BASE_URL"):
-    os.environ.pop("ANTHROPIC_AUTH_TOKEN", None)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # make the root-level common/ package importable
+from common.bootstrap import make_client, resolve_model, run_repl, print_last_text, require_credentials, guard  # noqa: E402
 
 WORKDIR = Path.cwd()
-client = Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"))
-MODEL = os.environ["MODEL_ID"]
+client = make_client()
+MODEL = resolve_model()
 
 SYSTEM = (
     f"You are a coding agent at {WORKDIR}. Use tools to solve tasks. "
@@ -479,21 +478,12 @@ def agent_loop(messages: list):
 
 
 if __name__ == "__main__":
-    print("s11: Background Tasks - explicit background Bash execution")
-    print("Enter a question, press Enter to send. Type q to quit.\n")
-
     history = []
-    while True:
-        try:
-            query = input("\033[36ms11 >> \033[0m")
-        except (EOFError, KeyboardInterrupt):
-            break
-        if query.strip().lower() in ("q", "exit", ""):
-            break
+
+    def handle(query: str) -> None:
         trigger_hooks("UserPromptSubmit", query)
         history.append({"role": "user", "content": query})
         agent_loop(history)
-        for block in history[-1]["content"]:
-            if getattr(block, "type", None) == "text":
-                print(block.text)
-        print()
+        print_last_text(history)
+
+    run_repl("s11", "s11: Background Tasks - explicit background Bash execution", handle)

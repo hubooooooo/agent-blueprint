@@ -311,3 +311,4 @@ python s08_context_compact/code.py
 
 s09 Memory 将实现记忆写入、检索与整理。
 
+> 运行方式：在仓库根目录执行 `python s08_context_compact/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

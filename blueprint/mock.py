@@ -10,43 +10,87 @@ import re
 
 from blueprint.knowledge import FEATURES
 
-_FEATURE_KEYWORDS: dict[str, list[str]] = {
-    "destructive_ops": ["删除", "写入", "修改", "发送", "支付", "退款", "部署", "隐私", "照片", "敏感",
-                        "delete", "deploy", "refund", "privacy", "photo"],
-    "audit_needed": ["审计", "审核", "拦截", "埋点", "合规", "audit", "compliance"],
-    "multi_step": ["多步", "步骤", "进度", "阶段", "分幕", "multi-step", "计划"],
-    "context_heavy": ["并行", "大量文件", "长文档", "论文", "30 页", "30页", "探索", "parallel", "explore", "代码库"],
-    "large_knowledge": ["知识库", "规范", "术语", "文档库", "领域知识", "规则库", "范式", "glossary"],
-    "long_sessions": ["长会话", "长时间", "大量日志", "长对话", "long session"],
-    "cross_session_memory": ["记住", "偏好", "跨会话", "个性化", "历史记录", "积累", "remember", "preference"],
-    "persistent_goals": ["断点", "续跑", "持久化", "长期目标", "resume"],
-    "slow_operations": ["几分钟", "耗时", "异步", "后台", "慢操作", "background"],
+# 关键词分两档。强信号：单独命中即判 yes。弱信号：至少命中两个不同的词才判 yes，
+# 只命中一个判 unknown（落到「待确认」）。这样 mock 的偏差方向是「宁可少选」，
+# 拿不准的留给人确认，而不是把所有沾边的组件都标成必选。
+_STRONG_KEYWORDS: dict[str, list[str]] = {
+    "destructive_ops": ["删除", "支付", "退款", "部署", "隐私", "敏感数据",
+                        "delete", "deploy", "refund", "privacy"],
+    "audit_needed": ["审计", "审核", "合规", "埋点", "audit", "compliance"],
+    "multi_step": ["多步", "多步骤", "分步执行", "multi-step"],
+    "context_heavy": ["大量文件", "长文档", "整个代码库", "整个仓库", "上下文爆炸"],
+    "large_knowledge": ["知识库", "术语库", "规则库", "文档库", "领域知识", "glossary", "knowledge base"],
+    "long_sessions": ["长会话", "长对话", "大量日志", "long session"],
+    "cross_session_memory": ["记住", "跨会话", "偏好", "remember", "preference"],
+    "persistent_goals": ["断点续跑", "续跑", "长期目标", "resume"],
+    "slow_operations": ["几分钟", "慢操作", "后台执行", "异步执行", "background job"],
     "scheduled": ["定时", "每天", "每周", "每小时", "每晚", "cron", "daily", "weekly", "nightly"],
-    "parallel_isolated": ["团队", "多 agent", "多个 agent", "多agent", "worktree", "多人协作", "swarm"],
+    "parallel_isolated": ["多 agent", "多个 agent", "多agent", "agent 团队", "worktree", "swarm"],
     "external_ecosystem": ["mcp", "第三方工具", "插件", "plugin", "工具生态"],
     "fixed_orchestration": ["固定流程", "固定顺序", "固定编排", "fixed pipeline"],
-    "auto_completion": ["自动判断", "算不算合格", "验收", "达标", "是否完成", "quality gate", "评估器"],
+    "auto_completion": ["自动判断", "算不算合格", "评估器", "quality gate"],
+}
+_WEAK_KEYWORDS: dict[str, list[str]] = {
+    "destructive_ops": ["写入", "修改", "发送", "上传", "照片", "敏感"],
+    "audit_needed": ["拦截", "留痕", "记录"],
+    "multi_step": ["步骤", "进度", "阶段", "流程", "计划"],
+    "context_heavy": ["并行", "论文", "30 页", "30页", "探索", "代码库", "parallel", "explore"],
+    "large_knowledge": ["规范", "术语", "范式", "文档"],
+    "long_sessions": ["长时间", "持续运行"],
+    "cross_session_memory": ["个性化", "历史记录", "积累", "跨篇", "词库"],
+    "persistent_goals": ["持久化", "断点", "恢复"],
+    "slow_operations": ["耗时", "异步", "后台", "卡住"],
+    "scheduled": ["定期", "自动跑"],
+    "parallel_isolated": ["团队", "多人协作", "并行"],
+    "external_ecosystem": ["集成", "接入"],
+    "fixed_orchestration": ["流水线", "编排", "pipeline"],
+    "auto_completion": ["验收", "达标", "是否完成"],
+}
+# 兼容旧名字：合并后的全部关键词（测试或外部代码可能引用）
+_FEATURE_KEYWORDS: dict[str, list[str]] = {
+    fid: _STRONG_KEYWORDS.get(fid, []) + _WEAK_KEYWORDS.get(fid, []) for fid in _STRONG_KEYWORDS
 }
 
 _LATER_MARKERS = ["二期", "以后", "未来", "后续", "later", "phase 2", "v2"]
+
+
+def _hits(text_low: str, words: list[str]) -> list[str]:
+    return [w for w in words if w.lower() in text_low]
+
+
+# 按「分句」切：句号/分号/问叹号/换行之外，逗号和冒号也切开，这样「现在要记住偏好，未来再做个性化」
+# 里的「记住偏好」不会被同一句后半段的「未来」误染成二期。顿号不切，保持「A、B（二期）」为一个单位。
+_CLAUSE_SPLIT = re.compile(r"[。；;！!？?\n，,：:]")
+
+
+def _is_later(text_low: str, hits: list[str]) -> bool:
+    """只有当每个命中词所在的分句都带「二期 / 未来」类标记时才判 later；有任何一处是「现在要」就判 yes。"""
+    clauses = [c for c in _CLAUSE_SPLIT.split(text_low) if c.strip()]
+    containing = [c for c in clauses if any(h.lower() in c for h in hits)]
+    if not containing:
+        return False
+    return all(any(m in c for m in _LATER_MARKERS) for c in containing)
 
 
 def _guess_features(text: str) -> dict[str, dict]:
     result: dict[str, dict] = {}
     low = text.lower()
     for feat in FEATURES:
-        hits = [w for w in _FEATURE_KEYWORDS.get(feat.id, []) if w.lower() in low]
-        if not hits:
+        strong = _hits(low, _STRONG_KEYWORDS.get(feat.id, []))
+        weak = _hits(low, _WEAK_KEYWORDS.get(feat.id, []))
+        if not strong and not weak:
             result[feat.id] = {"value": "unknown", "evidence": "输入未提及"}
             continue
-        value = "yes"
-        for h in hits:
-            idx = low.find(h.lower())
-            window = low[max(0, idx - 40): idx + 40]
-            if any(m in window for m in _LATER_MARKERS):
-                value = "later"
-                break
-        result[feat.id] = {"value": value, "evidence": "关键词命中：" + "、".join(hits[:3])}
+        if not strong and len(weak) < 2:
+            result[feat.id] = {"value": "unknown",
+                               "evidence": f"仅命中弱信号「{weak[0]}」，不足以判定，待确认"}
+            continue
+        hits = strong + weak
+        value = "later" if _is_later(low, hits) else "yes"
+        label = "关键词命中：" + "、".join(hits[:3])
+        if not strong:
+            label += "（弱信号叠加）"
+        result[feat.id] = {"value": value, "evidence": label}
     return result
 
 

@@ -43,15 +43,14 @@ except ImportError:
     pass
 
 from anthropic import Anthropic
-from dotenv import load_dotenv
+import sys
+from pathlib import Path
 
-load_dotenv(override=True)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # make the root-level common/ package importable
+from common.bootstrap import make_client, resolve_model, run_repl, print_last_text, require_credentials, guard  # noqa: E402
 
-if os.getenv("ANTHROPIC_BASE_URL"):
-    os.environ.pop("ANTHROPIC_AUTH_TOKEN", None)
-
-client = Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"))
-MODEL = os.environ["MODEL_ID"]
+client = make_client()
+MODEL = resolve_model()
 
 SYSTEM = f"You are a coding agent at {os.getcwd()}. Use bash to solve tasks. Act, don't explain."
 
@@ -119,23 +118,11 @@ def agent_loop(messages: list):
 
 # -- Entry point --
 if __name__ == "__main__":
-    print("s01: Agent Loop")
-    print("Enter a question, press Enter to send. Type q to quit.\n")
-
     history = []
-    while True:
-        try:
-            query = input("\033[36ms01 >> \033[0m")
-        except (EOFError, KeyboardInterrupt):
-            break
-        if query.strip().lower() in ("q", "exit", ""):
-            break
+
+    def handle(query: str) -> None:
         history.append({"role": "user", "content": query})
         agent_loop(history)
-        # Print the model's final text response
-        response_content = history[-1]["content"]
-        if isinstance(response_content, list):
-            for block in response_content:
-                if getattr(block, "type", None) == "text":
-                    print(block.text)
-        print()
+        print_last_text(history)
+
+    run_repl("s01", "s01: Agent Loop", handle)

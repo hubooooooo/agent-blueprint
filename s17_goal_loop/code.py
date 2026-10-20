@@ -847,6 +847,9 @@ def make_live_session(workdir: Path) -> AgentSession:
 
 
 async def main(argv: list[str]) -> None:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from common.bootstrap import require_credentials, friendly_api_error
+    require_credentials()
     session = make_live_session(Path.cwd())
     if argv:
         result = await session.submit(" ".join(argv))
@@ -867,7 +870,14 @@ async def main(argv: list[str]) -> None:
             break
         if not query.strip():
             continue
-        result = await session.submit(query)
+        try:
+            result = await session.submit(query)
+        except Exception as exc:  # noqa: BLE001
+            hint = friendly_api_error(exc)
+            if hint is None:
+                raise
+            print(hint)
+            continue
         if result.text:
             print(result.text)
         if result.reason:

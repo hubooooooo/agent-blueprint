@@ -232,3 +232,4 @@ s17 解决“整件事情是否已经完成”：即使 Workflow 已经结束，
 
 两个机制可以单独使用。接到同一个宿主时，Workflow 的完成通知进入会话，Goal Loop 再决定整个任务是否还要继续。
 
+> 运行方式：在仓库根目录执行 `python s17_goal_loop/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

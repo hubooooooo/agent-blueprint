@@ -79,6 +79,8 @@ S15 不再引入新机制，而是把前面各章的组件集成到同一个 har
 
 ## code.py 包含什么
 
+> 代码按小节放在 `s15_parts/pNN_*.py`，`code.py` 只负责按顺序把它们载入同一个命名空间；先看 `code.py` 顶部的分节清单，再打开对应文件。
+
 ### 工具与分发
 
 内置工具池包含 25 个工具：
@@ -193,6 +195,7 @@ MCP 负责外部能力：
 
 - `connect_mcp(name)` 连接 mock server
 - `assemble_tool_pool()` 把 MCP 工具组装进工具池，并拒绝规范化后的名称冲突
+- `register_tool_extension(fn)` 是显式扩展点：注册的 `fn(tools, handlers)` 在每次组装末尾执行。后续章节（s16 的 `Workflow` 工具）通过它加工具，而不是替换 `assemble_tool_pool` 本身
 - 工具名统一为 `mcp__server__tool`
 
 ---
@@ -221,3 +224,4 @@ python s15_integrated_harness/code.py
 
 [s16 Workflow Runtime](../s16_workflow_runtime/) 会在这个 host 中加入 `Workflow` 工具。Workflow 把固定的编排路径写在代码中，并记录运行进度，使同一次运行可以继续执行。
 
+> 运行方式：在仓库根目录执行 `python s15_integrated_harness/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

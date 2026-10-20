@@ -105,4 +105,4 @@ Agent 现在能拆任务了。但每个任务需要的知识不一样：改前�
 
 s07 Skill Loading → 技能按需注入，不在 system prompt 里堆文档。用到的时候才加载，和读文件一样自然。
 
-
+> 运行方式：在仓库根目录执行 `python s06_subagent/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

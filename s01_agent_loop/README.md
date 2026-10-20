@@ -135,4 +135,4 @@ python s01_agent_loop/code.py
 
 s02 Tool Use → 给它 5 个真正的工具，会发生什么？模型会不会一次调用多个工具？几个工具同时跑会不会互相踩？
 
-
+> 运行方式：在仓库根目录执行 `python s01_agent_loop/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

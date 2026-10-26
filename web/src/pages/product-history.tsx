@@ -84,7 +84,7 @@ function Entry({ entry, names, onOpen }: { entry: HistoryEntry; names: Record<st
     .filter(Boolean)
     .map((node, i) => <div key={i}>{node}</div>)
   return (
-    <li className="grid gap-x-6 gap-y-2 border-t py-5 first:border-t-0 sm:grid-cols-[9rem_1fr]">
+    <li className="grid gap-x-6 gap-y-2 border-t py-4 first:border-t-0 sm:grid-cols-[9rem_1fr]">
       <div className="flex items-baseline gap-3 sm:flex-col sm:gap-1">
         <span className="font-mono text-xs text-muted-foreground">{entry.date}</span>
         {entry.version != null && <span className="font-mono text-sm">V{entry.version}</span>}
@@ -137,18 +137,18 @@ export function HistoryTab({ slug, names, refreshKey }: { slug: string; names: R
 
   return (
     <div>
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <Eyebrow>当前版本</Eyebrow>
-          <div className="mt-1 font-mono text-3xl">V{history.current}</div>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-baseline gap-2 text-sm">
+          <span className="text-muted-foreground">当前版本</span>
+          <span className="font-mono font-medium">V{history.current}</span>
         </div>
-        <Button variant="outline" onClick={() => open()}>
+        <Button variant="outline" size="sm" onClick={() => open()}>
           <FileTextIcon /> 看当前的需求文档
         </Button>
       </div>
 
       {history.versions.length > 1 && (
-        <section className="mb-10">
+        <section className="mb-8">
           <Eyebrow className="mb-3">版本记录</Eyebrow>
           <div className="divide-y rounded-lg border">
             {[...history.versions].reverse().map((v) => (

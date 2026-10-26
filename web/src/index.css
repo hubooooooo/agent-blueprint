@@ -3,14 +3,27 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
+/* 中文用小米 MiSans 可变字体；按字符范围切成小块，页面用到哪些字才下载哪块 */
+@import "misans/lib/Normal/MiSansVF.min.css";
 @import "tw-shimmer";
+
+/* misans 包沿用小米官方网页字体的切片范围，漏掉了全角符号（？～％、全角数字等），
+   这些字会落到苹方上。这里从官方 MiSansVF.ttf 里切出切片没有的全角字补上。 */
+@font-face {
+    font-family: "MiSans VF";
+    font-style: normal;
+    font-weight: 150 700;
+    font-display: swap;
+    src: url("./assets/fonts/misans-vf-fullwidth.woff2") format("woff2");
+    unicode-range: U+FF02-FF07, U+FF0A-FF0B, U+FF0D, U+FF0F-FF19, U+FF1C-FF5E, U+FFE0-FFE5;
+}
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font-sans: 'Geist Variable', 'MiSans VF', -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --font-mono: 'Geist Mono Variable', 'MiSans VF', ui-monospace, SFMono-Regular, Menlo, monospace;
     --color-ok: var(--ok);
     --color-ok-soft: var(--ok-soft);
     --color-warn: var(--warn);
@@ -169,8 +182,11 @@
   button:not(:disabled), [role="button"]:not(:disabled) {
     cursor: pointer;
     }
+  /* 整体放大一号：Tailwind 的字号、间距、按钮高度、栏宽都以 rem 计，跟着根字号等比放大，比例不变。
+     用百分比是为了尊重浏览器里设置的默认字号（默认 16px → 17px）。 */
   html {
     @apply font-sans;
+    font-size: 106.25%;
     }
 }
 

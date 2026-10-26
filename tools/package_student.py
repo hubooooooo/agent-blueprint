@@ -11,13 +11,14 @@ ROOT = Path(__file__).resolve().parents[1]
 ROOT_FILES = (
     "README.md", "使用引导.md", "BLUEPRINT.md", "LICENSE",
     "requirements.txt", "setup.sh", ".env.example", ".gitignore",
-    "启动引擎.command",
+    "启动引擎.command", "启动界面.command",
 )
 PATTERNS = (
     ".vscode/*.json",
     "docs/beginner-guide.md", "docs/prd-toy-theater.md",
     "docs/维护手册.md", "docs/requirements.md", "docs/examples/*.md",
     "blueprint/*.py", "blueprint/knowledge/*.py", "blueprint/knowledge/prompts/*.md",
+    "blueprint/web/*.py", "blueprint/web/static/index.html", "blueprint/web/static/assets/*",
     "common/*.py",
     "s[0-9][0-9]_*/README.md", "s[0-9][0-9]_*/code.py", "s[0-9][0-9]_*/images/*.svg",
     "s[0-9][0-9]_*/s[0-9][0-9]_parts/p[0-9][0-9]_*.py",
@@ -26,7 +27,7 @@ PATTERNS = (
     "evals/forward/*/input.md", "evals/forward/*/expected.json",
     "evals/reverse/*/expected.json", "evals/reverse/*/target.txt",
     "evals/reverse/*/README.md", "evals/reverse/*/src/*.py",
-    "tests/test_*.py", "tools/package_student.py", "tools/wizard.py",
+    "tests/test_*.py", "tools/package_student.py", "tools/wizard.py", "tools/mac_env.sh",
 )
 
 

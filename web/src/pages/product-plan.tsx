@@ -1,10 +1,10 @@
-import { ArrowRightIcon, CopyIcon } from "lucide-react"
+import { ArrowRightIcon, CopyIcon, DownloadIcon } from "lucide-react"
 import type { ReactNode } from "react"
 import { toast } from "sonner"
 
 import { Chip, DECISIONS, Eyebrow } from "@/components/common"
 import { Button } from "@/components/ui/button"
-import type { Plan } from "@/lib/api"
+import { handoffUrl, type Plan, type Question } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 // 方案的五个标签页，数据来自 blueprint/web/views.py 的 plan_view。
@@ -54,9 +54,58 @@ function Ledger({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
   )
 }
 
+/** 组件类问题末尾的「（关系到组件 s07 技能加载）」拆出来，做成小标签。 */
+function QuestionText({ q }: { q: Question }) {
+  const m = q.text.match(/^(.*)（关系到组件 (.+)）$/)
+  return (
+    <span title={q.original === q.text ? undefined : `原问题：${q.original}`}>
+      {m ? m[1] : q.text}
+      {m && <span className="ms-2 inline-block font-mono text-xs whitespace-nowrap text-muted-foreground">{m[2]}</span>}
+    </span>
+  )
+}
+
+function NextStep({ plan, slug }: { plan: Plan; slug: string }) {
+  const left = plan.questions.length
+  return (
+    <Section title="下一步：交给会写代码的人">
+      <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
+        <div className="space-y-3 text-sm leading-relaxed">
+          <p>
+            方案定下来以后，导出一个<strong>交接包</strong>（zip 文件），发给帮你做产品的开发者。里面有需求文档、方案、还没定下来的问题，以及第一版要用到的组件的参考代码。
+          </p>
+          <p className="text-muted-foreground">
+            对方如果用 Claude Code、Cursor 这类 AI 编程工具，解压后把「给AI编程工具的提示词.md」里的话交给它，它会先读需求、把不清楚的地方问你，再按方案写代码。
+          </p>
+          {left > 0 && (
+            <p className="rounded-md bg-ask-soft px-3 py-2 text-ask">
+              还有 {left} 个问题没回答。建议先答完再导出；也可以先导出，开发者会把这些问题带回来问你。
+            </p>
+          )}
+        </div>
+        <div className="rounded-lg border bg-card p-4">
+          <Eyebrow>交接包</Eyebrow>
+          <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
+            <li>交接说明.md · 从这里开始</li>
+            <li>给AI编程工具的提示词.md</li>
+            <li>PRD.md · 方案.md · 迭代记录.md</li>
+            <li>参考组件/ · {plan.components.filter((c) => c.decision === "必选").length} 个必选组件</li>
+          </ul>
+          <Button className="mt-4 w-full" size="lg" nativeButton={false} render={<a href={handoffUrl(slug)} download />}>
+            <DownloadIcon /> 导出交接包
+          </Button>
+          <p className="mt-2 text-xs text-muted-foreground">
+            方案每更新一次，记得重新导出。
+          </p>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
 // ---------------------------------------------------------------------------
 
-export function OverviewTab({ plan, onAnswer }: { plan: Plan; onAnswer: () => void }) {
+export function OverviewTab({ plan, slug, onAnswer }: { plan: Plan; slug: string; onAnswer: () => void }) {
   const counts = Object.fromEntries(DECISIONS.map((d) => [d.key, plan.components.filter((c) => c.decision === d.key).length]))
   return (
     <div>
@@ -79,27 +128,45 @@ export function OverviewTab({ plan, onAnswer }: { plan: Plan; onAnswer: () => vo
       </div>
 
       <Section
-        title={`待确认问题（${plan.unknowns.length}）`}
-        aside={plan.unknowns.length ? <Button onClick={onAnswer}>开始回答 <ArrowRightIcon /></Button> : null}
+        title={`待确认问题（${plan.questions.length}）`}
+        aside={plan.questions.length ? <Button onClick={onAnswer}>开始回答 <ArrowRightIcon /></Button> : null}
       >
-        {plan.unknowns.length ? (
+        {plan.questions.length ? (
           <>
             <p className="-mt-2 mb-4 text-sm text-muted-foreground">
               答不上来的就是风险点。点「开始回答」在对话里一题一题过，拿不准的可以让 AI 给你几个方向；答完自动重新推导。
             </p>
             <ol>
-              {plan.unknowns.map((q, i) => (
+              {plan.questions.map((q, i) => (
                 <li key={i} className="flex gap-4 border-t py-3 first:border-t-0">
                   <span className="pt-0.5 font-mono text-xs text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
-                  <span>{q}</span>
+                  <QuestionText q={q} />
                 </li>
               ))}
             </ol>
           </>
         ) : (
-          <p className="text-muted-foreground">信息很完整，没有待确认的问题。</p>
+          <p className="text-muted-foreground">没有需要你回答的问题了。</p>
+        )}
+        {plan.dev_items.length > 0 && (
+          <details className="mt-6 rounded-lg border px-4 py-3">
+            <summary className="cursor-pointer text-sm">
+              交给开发者的技术备注 <span className="font-mono text-xs text-muted-foreground">{plan.dev_items.length}</span>
+              <span className="ms-2 text-muted-foreground">· 你不用回答，交接包里会带给开发者</span>
+            </summary>
+            <ol className="mt-3 space-y-2 text-sm text-muted-foreground">
+              {plan.dev_items.map((q, i) => (
+                <li key={i} className="flex gap-3">
+                  <span className="font-mono text-xs">{String(i + 1).padStart(2, "0")}</span>
+                  <span title={q.original}>{q.text}</span>
+                </li>
+              ))}
+            </ol>
+          </details>
         )}
       </Section>
+
+      <NextStep plan={plan} slug={slug} />
 
       <Section title="需求拆解">
         <Ledger

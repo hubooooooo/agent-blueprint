@@ -109,6 +109,15 @@ SKELETON_README = """# skeleton/ —— 代码骨架放这里
 # init
 # ---------------------------------------------------------------------------
 
+def _first_sentence(text: str) -> str:
+    """第一行有内容的正文：跳过 Markdown 标题和列表符号（网页对话整理出的需求以「### 一句话想法」开头）。"""
+    for line in text.strip().splitlines():
+        line = line.strip().lstrip("-*> ").strip()
+        if line and not line.startswith("#"):
+            return line
+    return text.strip().splitlines()[0] if text.strip() else ""
+
+
 def init_workspace(out_root: Path, name: str, idea: str) -> Path:
     name = name.strip()
     if not name:
@@ -124,7 +133,7 @@ def init_workspace(out_root: Path, name: str, idea: str) -> Path:
     atomic_write(ws / PRD_NAME, PRD_TEMPLATE.format(name=name, slug=slug, date=_today(),
                                                     idea=idea.strip(), pending_heading=PENDING_HEADING))
     atomic_write(ws / LOG_NAME, LOG_TEMPLATE.format(name=name, slug=slug, date=_today(),
-                                                    idea_short=idea.strip().splitlines()[0][:80]))
+                                                    idea_short=_first_sentence(idea)[:80]))
     readme = ws / SKELETON_DIR / "README.md"
     if not readme.exists():
         atomic_write(readme, SKELETON_README)
@@ -219,7 +228,7 @@ def _one_line(text: str) -> str:
     return re.sub(r"\s*\n\s*", " ", text)
 
 
-def bump_prd(ws: Path, requirement: str) -> tuple[int, int, str]:
+def bump_prd(ws: Path, requirement: str, source: str = "验证后的新需求") -> tuple[int, int, str]:
     """快照当前 PRD → prd/V{n}.md，升版到 V{n+1}，把新需求追加到待消化节。返回 (旧版本, 新版本, 新文本)。"""
     ws = Path(ws)
     text = read_prd(ws)
@@ -229,9 +238,13 @@ def bump_prd(ws: Path, requirement: str) -> tuple[int, int, str]:
     snapshot.parent.mkdir(parents=True, exist_ok=True)
     if not snapshot.exists():
         atomic_write(snapshot, text)
+    plan = ws / "plan.json"
+    plan_snapshot = ws / HISTORY_DIR / f"V{old}.plan.json"
+    if plan.is_file() and not plan_snapshot.exists():      # 当时的方案也留一份，版本历史里能对比选型
+        atomic_write(plan_snapshot, plan.read_text(encoding="utf-8"))
     summary = requirement.strip().splitlines()[0][:60]
     text = _bump_header(text, new)
-    text = _append_history_row(text, f"| V{new} | {_today()} | {summary} | 验证后的新需求 |")
+    text = _append_history_row(text, f"| V{new} | {_today()} | {summary} | {source} |")
     text = _append_pending(text, new, requirement)
     atomic_write(ws / PRD_NAME, text)
     return old, new, text
@@ -305,20 +318,23 @@ def quick_reselect(prd_text: str, runner, ws: Path, log: Callable[[str], None] =
 
 
 def revise_workspace(ws: Path, requirement: str, runner=None, run_plan_flag: bool = True,
-                     log: Callable[[str], None] = print, quick: bool = False) -> dict:
+                     log: Callable[[str], None] = print, quick: bool = False,
+                     warn_undigested: bool = True, source: str = "验证后的新需求") -> dict:
+    """warn_undigested=False 用于网页界面：那里的用户没有 AI 编程工具去「消化」新需求，
+    新需求留在 PRD 第 7 节、由推导直接读取，就不在迭代记录里反复提醒。"""
     ws = Path(ws)
     if not requirement.strip():
         raise ValueError("新需求不能为空")
     before = load_components(ws)
     undigested = pending_versions(read_prd(ws))
-    old, new, prd_text = bump_prd(ws, requirement)
+    old, new, prd_text = bump_prd(ws, requirement, source=source)
     log(f"PRD 已从 V{old} 升到 V{new}，旧版快照：{ws / HISTORY_DIR / f'V{old}.md'}")
 
     result = {"old_version": old, "new_version": new, "diff": [], "unknowns": 0, "doc": None,
               "undigested": undigested}
     lines = [f"新需求：{requirement.strip().splitlines()[0][:120]}",
              f"PRD：V{old} → V{new}，新需求已追加到「{PENDING_HEADING[3:]}」，等 AI 消化进各节"]
-    if undigested:
+    if undigested and warn_undigested:
         warn = f"⚠️ 上一轮的新需求还没消化：{'、'.join(undigested)} 仍留在「{PENDING_HEADING[3:]}」。先让 AI 把它们合并进 PRD 各节并更新 skeleton/，再继续叠加。"
         log(warn)
         lines.append(warn)
@@ -386,3 +402,41 @@ def verify_workspace(ws: Path, runner, log: Callable[[str], None] = print):
     lines.append("人工验证结论：（待填：实际跑起来了吗？核心闭环走通了吗？新的想法写成下一轮 revise）")
     append_log(ws, f"V{current_version(prd_text)} · 验证", lines)
     return audit, doc
+
+
+# ---------------------------------------------------------------------------
+# 读：版本表与迭代记录（网页界面的「版本历史」用）
+# ---------------------------------------------------------------------------
+
+def version_table(prd_text: str) -> list[dict]:
+    """PRD「版本演进记录」表格 → [{version, date, change, source}]，按版本升序。"""
+    m = re.search(r"^## 版本演进记录\s*$", prd_text, re.M)
+    if not m:
+        return []
+    rows = []
+    for line in prd_text[m.end():].splitlines():
+        if line.startswith("## "):
+            break
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) >= 4 and re.fullmatch(r"V\d+", cells[0]):
+            rows.append({"version": int(cells[0][1:]), "date": cells[1], "change": cells[2], "source": cells[3]})
+    return sorted(rows, key=lambda r: r["version"])
+
+
+def log_entries(ws: Path) -> list[dict]:
+    """迭代记录.md → [{date, version, title, lines}]，按记录顺序。标题形如「2026-10-26 · V2 · 新需求」。"""
+    path = Path(ws) / LOG_NAME
+    if not path.is_file():
+        return []
+    entries = []
+    for block in re.split(r"^## ", path.read_text(encoding="utf-8"), flags=re.M)[1:]:
+        head, _, body = block.partition("\n")
+        parts = [p.strip() for p in head.split("·")]
+        version = next((int(p[1:]) for p in parts if re.fullmatch(r"V\d+", p)), None)
+        entries.append({
+            "date": parts[0] if parts else "",
+            "version": version,
+            "title": parts[-1] if len(parts) > 1 else head.strip(),
+            "lines": [ln[2:].strip() for ln in body.splitlines() if ln.startswith("- ")],
+        })
+    return entries

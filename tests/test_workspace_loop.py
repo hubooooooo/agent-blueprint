@@ -169,3 +169,34 @@ def test_plan_into_workspace_appends_log_entry(tmp_path):
                        cwd=ROOT, capture_output=True, text=True, env=env)
     assert r.returncode == 0 and not (tmp_path / "plain" / "迭代记录.md").exists()
 
+
+
+def test_bump_snapshots_plan_and_history_readers(tmp_path):
+    from blueprint.forward import run_plan
+    from blueprint.workspace import log_entries, version_table
+    ws = _init(tmp_path)
+    run_plan((ws / "PRD.md").read_text(encoding="utf-8"), MockRunner(), ws, log=quiet)
+    plan_v1 = (ws / "plan.json").read_text(encoding="utf-8")
+    revise_workspace(ws, "要审计每一次删除\n细节", MockRunner(), log=quiet, source="网页界面·加新需求")
+    assert (ws / "prd" / "V1.plan.json").read_text(encoding="utf-8") == plan_v1
+
+    rows = version_table((ws / "PRD.md").read_text(encoding="utf-8"))
+    assert [(r["version"], r["change"], r["source"]) for r in rows] == [
+        (1, "初始需求", "首次需求"), (2, "要审计每一次删除", "网页界面·加新需求")]
+    entries = log_entries(ws)
+    assert [(e["version"], e["title"]) for e in entries] == [(1, "建立工作区"), (2, "新需求")]
+    assert entries[1]["lines"][0] == "新需求：要审计每一次删除"
+
+
+def test_revise_can_skip_undigested_warning(tmp_path):
+    ws = _init(tmp_path)
+    revise_workspace(ws, "第一轮需求", None, run_plan_flag=False, log=quiet)
+    result = revise_workspace(ws, "第二轮需求", None, run_plan_flag=False, log=quiet, warn_undigested=False)
+    assert result["undigested"] == ["V2"]
+    assert "还没消化" not in (ws / "迭代记录.md").read_text(encoding="utf-8")
+
+
+def test_log_uses_first_sentence_not_markdown_heading(tmp_path):
+    ws = init_workspace(tmp_path, "烘焙助手", "### 一句话想法\n\n- 在微信上帮社区烘焙店回答顾客问题\n\n### 给谁用")
+    log = (ws / "迭代记录.md").read_text(encoding="utf-8")
+    assert "原始需求：在微信上帮社区烘焙店回答顾客问题" in log

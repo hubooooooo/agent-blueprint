@@ -8,6 +8,9 @@
   python -m blueprint init   "<产品名>" "<一句话点子>" [--plan]
   python -m blueprint revise out/<产品名> "<新需求>" [--no-plan]
   python -m blueprint verify out/<产品名>
+
+  网页界面（给不用终端的用户）：
+  python -m blueprint ui     [--port 8765] [--no-browser] [--mock]
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = Path(os.environ.get("BLUEPRINT_OUT") or ROOT / "out")
 
 
-from blueprint.workspace import slugify as _slug  # noqa: E402
+from blueprint.workspace import log_plan, slugify as _slug  # noqa: E402
 
 
 def make_runner(args) -> object:
@@ -56,23 +59,8 @@ def cmd_plan(args) -> int:
     unknowns = len(plan.extract.get("unknowns", []))
     if unknowns:
         print(f"⚠️  有 {unknowns} 个待确认问题，见文档开头。")
-    _log_plan_in_workspace(out_dir, plan, doc)
+    log_plan(out_dir, plan, doc)
     return 0
-
-
-def _log_plan_in_workspace(out_dir: Path, plan, doc: Path) -> None:
-    """输出目录如果是产品工作区（有 PRD.md 和 迭代记录.md），把这次推导记一条，保持循环记录完整。"""
-    from blueprint.workspace import LOG_NAME, PRD_NAME, append_log, current_version, read_prd
-    if not ((out_dir / PRD_NAME).is_file() and (out_dir / LOG_NAME).is_file()):
-        return
-    version = current_version(read_prd(out_dir))
-    must = [c["id"] for c in plan.components if c["decision"] == "必选"]
-    append_log(out_dir, f"V{version} · 方案推导", [
-        f"方案：{doc.name}（模型 {plan.runner}，审稿{'通过' if plan.review.get('ok') else '未完全通过，见文末意见'}）",
-        f"必选组件：{'、'.join(must)}",
-        f"待确认：{len(plan.extract.get('unknowns', []))} 条，回答写进 PRD.md 第 6 节",
-        "人工验证结论：（待填）",
-    ])
 
 
 def cmd_audit(args) -> int:
@@ -110,7 +98,7 @@ def cmd_init(args) -> int:
             print(f"\n⛔ 工作区已建好，但方案推导中断：{exc}")
             print(f"   接着跑：.venv/bin/python -m blueprint plan \"{ws / 'PRD.md'}\" -o \"{ws}\" --resume")
             return 3
-        _log_plan_in_workspace(ws, plan, doc)
+        log_plan(ws, plan, doc)
         print(f"\n✅ 方案已生成：{doc}")
         unknowns = len(plan.extract.get("unknowns", []))
         if unknowns:
@@ -136,6 +124,12 @@ def cmd_revise(args) -> int:
         else:
             print("   选型变化：无")
     print("   下一步：让 AI 消化 PRD.md 第 7 节的新需求 → 增量更新 skeleton/ → blueprint verify")
+    return 0
+
+
+def cmd_ui(args) -> int:
+    from blueprint.web.server import serve
+    serve(DEFAULT_OUT, port=args.port, mock=args.mock, open_browser=not args.no_browser)
     return 0
 
 
@@ -201,6 +195,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("workspace", help="工作区目录，如 out/<产品名>")
     model_opts(sp)
     sp.set_defaults(func=cmd_verify)
+
+    sp = sub.add_parser("ui", help="打开本地网页界面（不用命令行也能走完产品循环）")
+    sp.add_argument("--port", type=int, default=8765, help="端口，被占用时自动往后找")
+    sp.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
+    sp.add_argument("--mock", action="store_true", help="离线演示：不调模型，用启发式占位")
+    sp.set_defaults(func=cmd_ui)
 
     sp = sub.add_parser("eval", help="跑测试题（默认离线）")
     sp.add_argument("--real", action="store_true", help="用真实模型跑正向测试题并统计特征判断准确率")

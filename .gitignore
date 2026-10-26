@@ -235,3 +235,6 @@ analysis_progress.md
 
 # Blueprint 引擎输出
 out/
+
+# 网页界面源码的依赖（构建产物提交在 blueprint/web/static/）
+web/node_modules/

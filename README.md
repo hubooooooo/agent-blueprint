@@ -81,13 +81,22 @@ flowchart LR
 
 ### 🍎 方式一：Mac 双击（零命令行）
 
-双击 **`启动引擎.command`**，终端里一问一答走完全程：
+**浏览器界面（推荐给不用终端的人）**：双击 **`启动界面.command`**，浏览器会自动打开引擎界面：
+
+1. 「模型设置」里选服务商、粘贴 API Key，点「测试连接并保存」。
+2. 「新建产品」像聊天一样说出想法，AI 分三轮追问（给谁用、怎么用、什么不能做），整理成需求草稿给你确认。确认后开始推导，进度直接显示在对话里。
+3. 推导完在产品页看方案：组件选型及理由、七层架构、工具清单、系统提示词、审稿意见。
+4. 方案里还没想清楚的问题，在「回答问题」里一题一题答；拿不准的点「帮我想想」，AI 给几个方向。答完自动写进 PRD 并重新推导。
+
+用的时候别关启动它的那个终端窗口。界面目前覆盖「新建产品 → 推导方案 → 回答待确认问题」，加新需求、检查骨架、检查外部项目暂时还要用下面的终端问答。
+
+**终端问答**：双击 **`启动引擎.command`**，终端里一问一答走完全程：
 
 1. 选模型服务商，粘贴 API Key，自动测试连接。
 2. 选「开始一个产品」，输入产品名和一句话想法。之后也可以选「加新需求」「检查骨架」「只生成方案」「检查外部项目」。
 3. 推导完成后自动打开结果文件。
 
-没装 Python 3.10+ 时，它会下载并打开 Python 安装器，装好后重新双击即可。
+没装 Python 3.10+ 时，两个启动文件都会下载并打开 Python 安装器，装好后重新双击即可。
 
 ### 🤖 方式二：交给能读本地文件的 AI（零安装）
 
@@ -125,6 +134,9 @@ bash setup.sh                         # 建虚拟环境、装依赖、生成 .en
 .venv/bin/python -m blueprint verify out/酒馆搭子                  # 用 PRD 对照 skeleton/
 .venv/bin/python -m blueprint revise out/酒馆搭子 "新需求：……"     # PRD 升版并重推方案
 .venv/bin/python -m blueprint revise out/酒馆搭子 "……" --quick     # 只重算选型，1 次调用
+
+# 浏览器界面
+.venv/bin/python -m blueprint ui                                  # 默认 http://127.0.0.1:8765，只允许本机访问
 
 # 单次使用
 .venv/bin/python -m blueprint plan "一句话点子或 PRD 文件路径" -o out/my-plan
@@ -227,13 +239,14 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 |---|---|
 | [使用引导.md](使用引导.md) | 用户入口：任务模板、产品循环、给 AI 的执行规则 |
 | [BLUEPRINT.md](BLUEPRINT.md) | 五步推导、五要素、七层架构与组件选型表 |
-| [blueprint/](blueprint/) | 引擎：需求拆解、规则选型、方案渲染、源码扫描、产品工作区 |
+| [blueprint/](blueprint/) | 引擎：需求拆解、规则选型、方案渲染、源码扫描、产品工作区；`web/` 是浏览器界面的服务端，`chat.py` 是界面里的两段对话 |
+| [web/](web/) | 浏览器界面源码（React + assistant-ui），构建产物提交在 `blueprint/web/static/` |
 | `s01`–`s17` | 17 个组件的说明、参考实现与图示 |
 | [common/](common/) | 组件参考实现共用的启动层 |
 | [scaffold/](scaffold/) · [skills/](skills/) | 项目模板；构建 Agent、代码检查等技能 |
 | [docs/](docs/) | 入门指南、真实输出示例、维护手册 |
 | [evals/](evals/) · [tests/](tests/) | 特征判断题库与回归测试 |
-| [tools/](tools/) | 双击向导、示例刷新、学生打包 |
+| [tools/](tools/) | 双击向导及其环境脚本、示例刷新、学生打包 |
 
 ## 开发与维护
 

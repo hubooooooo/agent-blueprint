@@ -16,7 +16,7 @@ ROOT_FILES = (
 PATTERNS = (
     ".vscode/*.json",
     "docs/beginner-guide.md", "docs/prd-toy-theater.md",
-    "docs/维护手册.md", "docs/requirements.md", "docs/examples/*.md",
+    "docs/维护手册.md", "docs/requirements.md", "docs/examples/*.md", "docs/images/*.png",
     "blueprint/*.py", "blueprint/knowledge/*.py", "blueprint/knowledge/prompts/*.md",
     "blueprint/web/*.py", "blueprint/web/static/index.html", "blueprint/web/static/assets/*",
     "common/*.py",

@@ -11,7 +11,7 @@ import { Callout, ModeCallouts, PageHeader, useSettings } from "@/components/com
 import { JobProgress, useJob } from "@/components/job-progress"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { api, chatEndpoints, handoffUrl, type Job, type ProductDetail } from "@/lib/api"
+import { api, chatEndpoints, handoffUrl, type Job, type ProductDetail, type Usage } from "@/lib/api"
 import { productHref } from "@/lib/route"
 import { HistoryTab } from "@/pages/product-history"
 import { ArchitectureTab, ComponentsTab, OverviewTab, PromptTab, ReviewTab } from "@/pages/product-plan"
@@ -178,13 +178,29 @@ function PlanTabs({ product, tab, reload, running }: { product: ProductDetail; t
         )}
       </div>
 
-      {plan.budget.calls ? (
-        <p className="mt-12 text-center font-mono text-xs text-muted-foreground">
-          {plan.runner === "mock" ? "离线演示" : "真实模型"} · 调用 {plan.budget.calls} 次 · 输入 {plan.budget.input_tokens} / 输出{" "}
-          {plan.budget.output_tokens} tokens · 设计稿 {plan.design_attempts} 版
-        </p>
-      ) : null}
+      <UsageFooter product={product} />
     </>
+  )
+}
+
+function UsageFooter({ product }: { product: ProductDetail }) {
+  const plan = product.plan!
+  const { total, chat } = product.usage
+  const n = (x: number) => x.toLocaleString("zh-CN")
+  // 早于用量记录建的产品没有累计数，只能显示最近一轮推导
+  const { budget } = plan
+  const [label, u]: [string, Usage] = total.calls
+    ? ["累计", total]
+    : ["最近一轮推导", { calls: budget.calls ?? 0, input_tokens: budget.input_tokens ?? 0, output_tokens: budget.output_tokens ?? 0 }]
+  if (!u.calls) return null
+  return (
+    <p
+      className="mt-12 text-center font-mono text-xs text-muted-foreground"
+      title={total.calls ? `其中对话 ${chat.calls} 次；新建产品时的三轮对话不计在内` : undefined}
+    >
+      {plan.runner === "mock" ? "离线演示" : "真实模型"} · {label}调用 {u.calls} 次 · 输入 {n(u.input_tokens)} / 输出{" "}
+      {n(u.output_tokens)} tokens · 设计稿 {plan.design_attempts} 版
+    </p>
   )
 }
 

@@ -1,8 +1,10 @@
 import { Thread } from "@/components/assistant-ui/elements/thread.aui"
 import { ChatProvider } from "@/components/chat/chat-runtime"
+import { useChatControls } from "@/components/chat/chat-storage"
 import { RestartButton } from "@/components/chat/restart-button"
 import { intakeToolkit } from "@/components/chat/tool-cards"
 import { Eyebrow, ModeCallouts, useSettings } from "@/components/common"
+import { Button } from "@/components/ui/button"
 import { chatEndpoints } from "@/lib/api"
 
 const STARTERS = [
@@ -19,6 +21,19 @@ function Welcome() {
       <p className="mt-3 text-muted-foreground">
         一句话就行。我会再问你三轮：给谁用、怎么用、什么不能做，然后整理成需求，交给引擎推导方案。说不清的地方直接说不知道。
       </p>
+    </div>
+  )
+}
+
+// 产品建好后对话就结束了；再往下聊不会改到已建的产品，所以把输入框换成「再建一个」
+function Finished() {
+  const { restart } = useChatControls()
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-3 py-2 text-sm text-muted-foreground">
+      这个产品已经开始推导。
+      <Button variant="outline" size="sm" onClick={restart}>
+        再新建一个产品
+      </Button>
     </div>
   )
 }
@@ -44,7 +59,7 @@ export function NewProductPage() {
           <RestartButton label="重新开始新产品" />
         </div>
         <div className="min-h-0 flex-1">
-          <Thread components={{ Welcome }} placeholder="说说你的想法…" />
+          <Thread components={{ Welcome, Finished }} placeholder="说说你的想法…" />
         </div>
       </ChatProvider>
     </div>

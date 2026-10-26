@@ -101,11 +101,15 @@ export type Plan = {
   budget: { calls?: number; input_tokens?: number; output_tokens?: number }
 }
 
+export type Usage = { calls: number; input_tokens: number; output_tokens: number }
+
 export type ProductDetail = ProductSummary & {
   path: string
   plan: Plan | null
   job: Job | null
   answer_intro: string
+  /** 这个产品累计的模型用量（blueprint/usage.py）；plan 是推导和加新需求，chat 是对话。 */
+  usage: { total: Usage; plan: Usage; chat: Usage }
 }
 
 export class ApiError extends Error {}

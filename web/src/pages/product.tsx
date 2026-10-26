@@ -1,4 +1,4 @@
-import { FolderOpenIcon } from "lucide-react"
+import { DownloadIcon, FolderOpenIcon } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
@@ -11,7 +11,7 @@ import { Callout, ModeCallouts, PageHeader, useSettings } from "@/components/com
 import { JobProgress, useJob } from "@/components/job-progress"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { api, chatEndpoints, type ProductDetail } from "@/lib/api"
+import { api, chatEndpoints, handoffUrl, type ProductDetail } from "@/lib/api"
 import { productHref } from "@/lib/route"
 import { ArchitectureTab, ComponentsTab, OverviewTab, PromptTab, ReviewTab } from "@/pages/product-plan"
 
@@ -69,13 +69,20 @@ function ProductView({ product, tab, reload }: { product: ProductDetail; tab: st
         </span>
       }
       actions={
-        <Button
-          variant="outline"
-          onClick={() => api.reveal(product.slug).catch((e: Error) => toast.error(e.message))}
-          title={product.path}
-        >
-          <FolderOpenIcon /> 打开文件夹
-        </Button>
+        <>
+          <Button
+            variant="outline"
+            onClick={() => api.reveal(product.slug).catch((e: Error) => toast.error(e.message))}
+            title={product.path}
+          >
+            <FolderOpenIcon /> 打开文件夹
+          </Button>
+          {plan && (
+            <Button nativeButton={false} render={<a href={handoffUrl(product.slug)} download />}>
+              <DownloadIcon /> 导出交接包
+            </Button>
+          )}
+        </>
       }
     />
   )
@@ -146,7 +153,7 @@ function PlanTabs({ product, tab, reload, running }: { product: ProductDetail; t
       </Tabs>
 
       <div className="pt-8">
-        {active === "overview" && <OverviewTab plan={plan} onAnswer={() => go("answers")} />}
+        {active === "overview" && <OverviewTab plan={plan} slug={product.slug} onAnswer={() => go("answers")} />}
         {active === "answers" && <AnswersTab product={product} reload={reload} running={running} />}
         {active === "components" && <ComponentsTab plan={plan} />}
         {active === "architecture" && <ArchitectureTab plan={plan} />}

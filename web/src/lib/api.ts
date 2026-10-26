@@ -56,11 +56,18 @@ export type Tool = {
   layer: string
 }
 
+/** 待确认问题：text 是给人看的大白话版本，original 是方案里的原问题（见 blueprint/plain.py）。 */
+export type Question = { text: string; original: string; component?: string }
+
 export type Plan = {
   title: string
   one_liner: string
   runner: string
+  /** 要问提出想法的人的问题（大白话），与 questions 一一对应 */
   unknowns: string[]
+  questions: Question[]
+  /** 只有工程师能判断的技术备注，交接包里带给开发者 */
+  dev_items: Question[]
   facts: { key: string; label: string; value: string; status: string }[]
   elements: { key: string; label: string; items: string[] }[]
   components: Component[]
@@ -122,6 +129,8 @@ export const api = {
   reveal: (slug: string) => request<{ ok: boolean }>(`/api/products/${enc(slug)}/reveal`, {}),
   job: (id: string) => request<Job>(`/api/jobs/${enc(id)}`),
 }
+
+export const handoffUrl = (slug: string) => `/api/products/${enc(slug)}/handoff`
 
 export const chatEndpoints = {
   intake: "/api/chat/intake",

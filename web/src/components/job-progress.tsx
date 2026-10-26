@@ -11,6 +11,7 @@ const STAGES = [
   { mark: "③", label: "组件选型", desc: "按固定规则决定 17 个组件选哪些，不调模型" },
   { mark: "④", label: "架构设计", desc: "工具清单、系统提示词、七层架构" },
   { mark: "⑤", label: "独立审稿", desc: "换个视角挑方案里的矛盾，不通过就打回重写一次" },
+  { mark: "⑥", label: "整理待确认问题", desc: "改成大白话，分出要问你的和交给开发者的" },
 ]
 
 type StageState = "todo" | "active" | "done" | "failed"

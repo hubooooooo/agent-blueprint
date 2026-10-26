@@ -8,6 +8,7 @@
   python -m blueprint init   "<产品名>" "<一句话点子>" [--plan]
   python -m blueprint revise out/<产品名> "<新需求>" [--no-plan]
   python -m blueprint verify out/<产品名>
+  python -m blueprint handoff out/<产品名> [-o 交接包.zip]
 
   网页界面（给不用终端的用户）：
   python -m blueprint ui     [--port 8765] [--no-browser] [--mock]
@@ -127,6 +128,16 @@ def cmd_revise(args) -> int:
     return 0
 
 
+def cmd_handoff(args) -> int:
+    from blueprint.handoff import build_handoff, handoff_filename
+    ws = Path(args.workspace)
+    out = Path(args.out) if args.out else ws.parent / handoff_filename(ws)
+    out.write_bytes(build_handoff(ws))
+    print(f"✅ 交接包已生成：{out}")
+    print("   交给会写代码的人，或者解压后把「给AI编程工具的提示词.md」交给你的 AI 编程工具。")
+    return 0
+
+
 def cmd_ui(args) -> int:
     from blueprint.web.server import serve
     serve(DEFAULT_OUT, port=args.port, mock=args.mock, open_browser=not args.no_browser)
@@ -195,6 +206,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("workspace", help="工作区目录，如 out/<产品名>")
     model_opts(sp)
     sp.set_defaults(func=cmd_verify)
+
+    sp = sub.add_parser("handoff", help="把需求、方案和参考组件打成交接包 zip，交给会写代码的人")
+    sp.add_argument("workspace", help="工作区目录，如 out/<产品名>")
+    sp.add_argument("-o", "--out", help="输出路径，默认 out/<产品名>-交接包-V<n>.zip")
+    sp.set_defaults(func=cmd_handoff)
 
     sp = sub.add_parser("ui", help="打开本地网页界面（不用命令行也能走完产品循环）")
     sp.add_argument("--port", type=int, default=8765, help="端口，被占用时自动往后找")

@@ -1,6 +1,11 @@
 <div align="center">
 
-# 🧭 Agent Blueprint
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.png">
+  <img src="docs/images/logo.png" width="112" alt="Agent Blueprint 的 logo：一只大眼睛的小黑猫">
+</picture>
+
+# Agent Blueprint
 
 **一句话点子 → 可确认的 PRD 与架构方案 → 你的 AI 写出能跑的骨架 → 引擎对照 PRD 验收 → 按新需求持续迭代**
 
@@ -18,11 +23,12 @@
 
 ## 它能帮你做什么
 
-| 你手上有 | 你说 | 你拿到 |
-|---|---|---|
-| 💡 一个点子或半份 PRD | 「帮我出个方案」 | `方案.md`：待确认问题、需求拆解、组件选型及理由、七层架构图、工具清单、系统提示词草案、独立审稿意见 |
-| 🔁 一个想认真做下去的产品 | 「按产品循环做，产品名 ……」 | `out/<产品名>/` 工作区：带版本的 PRD、方案、验证报告、迭代记录，之后每次加需求都在这里升版；代码骨架由你的 AI 按方案写进 `skeleton/` |
-| 🔍 一个已经写了的 Agent 项目 | 「检查这个项目缺什么」 | `差距报告.md`：缺哪些机制、先补什么、证据在哪一行 ＋ `本该有的PRD.md` |
+<table>
+<tr><th align="left" width="26%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">你手上有</th><th align="left" width="22%">你说</th><th align="left" width="52%">你拿到</th></tr>
+<tr><td>💡 一个点子或半份 PRD</td><td>「帮我出个方案」</td><td><code>方案.md</code>：待确认问题、需求拆解、组件选型及理由、七层架构图、工具清单、系统提示词草案、独立审稿意见</td></tr>
+<tr><td>🔁 一个想认真做下去的产品</td><td>「按产品循环做，产品名 ……」</td><td><code>out/&lt;产品名&gt;/</code> 工作区：带版本的 PRD、方案、验证报告、迭代记录，之后每次加需求都在这里升版；代码骨架由你的 AI 按方案写进 <code>skeleton/</code></td></tr>
+<tr><td>🔍 一个已经写了的 Agent 项目</td><td>「检查这个项目缺什么」</td><td><code>差距报告.md</code>：缺哪些机制、先补什么、证据在哪一行 ＋ <code>本该有的PRD.md</code></td></tr>
+</table>
 
 ## 核心：产品循环
 
@@ -48,13 +54,14 @@ flowchart LR
 
 下面是引擎对一段话需求的真实输出节选，没有人工修改。输入是：「家长拍一张玩具合影，AI 生成可以亲子共同演绎的剧情脚本……照片涉及隐私，默认不保存……未来希望记住孩子的年龄和偏好。」
 
-| 组件 | 选否 | 引擎给出的理由 |
-|---|---|---|
-| s03 权限系统 | ✅ 必选 | 照片涉及隐私，默认不保存，属于敏感数据操作 |
-| s04 钩子系统 | ✅ 必选 | 生成内容必须过适龄审核，天然需要审核与拦截环节 |
-| s09 记忆系统 | ⏸ 二期 | 未来希望记住孩子的年龄和偏好玩具做个性化 |
-| s12 定时调度 | ❌ 放弃 | 由家长拍照触发，输入未提任何定时自动触发 |
-| s13 Agent 团队 | ❌ 放弃 | 单人单次单脚本的产品形态，不涉及并行与隔离工作区 |
+<table>
+<tr><th align="left" width="20%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">组件</th><th align="left" width="14%">选否</th><th align="left" width="66%">引擎给出的理由</th></tr>
+<tr><td>s03 权限系统</td><td>✅ 必选</td><td>照片涉及隐私，默认不保存，属于敏感数据操作</td></tr>
+<tr><td>s04 钩子系统</td><td>✅ 必选</td><td>生成内容必须过适龄审核，天然需要审核与拦截环节</td></tr>
+<tr><td>s09 记忆系统</td><td>⏸ 二期</td><td>未来希望记住孩子的年龄和偏好玩具做个性化</td></tr>
+<tr><td>s12 定时调度</td><td>❌ 放弃</td><td>由家长拍照触发，输入未提任何定时自动触发</td></tr>
+<tr><td>s13 Agent 团队</td><td>❌ 放弃</td><td>单人单次单脚本的产品形态，不涉及并行与隔离工作区</td></tr>
+</table>
 
 它同时会列出你还没想清楚的问题，例如「目标孩子的年龄段是多少」「交互形态是小程序、App 还是网页」，答不上来的就是风险点。
 
@@ -66,10 +73,11 @@ flowchart LR
 
 开始前准备两样东西：
 
-| 准备 | 用来做什么 | 什么时候需要 |
-|---|---|---|
-| 模型 API Key | 引擎推导方案、升版、验收 | 所有方式都要。推荐 [DeepSeek](https://platform.deepseek.com)，便宜且国内可直连，配置方法见下一节 |
-| 能读写本地文件的 AI 编程工具 | 按方案把代码骨架写进 `skeleton/` | 要代码时才需要，例如 Claude Code、Cursor。只要方案或差距报告可以不装 |
+<table>
+<tr><th align="left" width="20%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">准备</th><th align="left" width="28%">用来做什么</th><th align="left" width="52%">什么时候需要</th></tr>
+<tr><td>模型 API Key</td><td>引擎推导方案、升版、验收</td><td>所有方式都要。推荐 <a href="https://platform.deepseek.com">DeepSeek</a>，便宜且国内可直连，配置方法见下一节</td></tr>
+<tr><td>能读写本地文件的 AI 编程工具</td><td>按方案把代码骨架写进 <code>skeleton/</code></td><td>要代码时才需要，例如 Claude Code、Cursor。只要方案或差距报告可以不装</td></tr>
+</table>
 
 用方式一或方式三推导完方案后，把下面这段话交给你的 AI 编程工具，让它写骨架：
 
@@ -102,7 +110,7 @@ flowchart LR
 </tr>
 </table>
 
-页面底部会显示这个产品累计调用了多少次模型、用了多少 tokens（推导和对话都算，新建产品时的三轮对话不算）。用的时候别关启动它的那个终端窗口。检查代码骨架、检查外部项目暂时还要用下面的终端问答。
+产品页左栏底部会显示这个产品累计调用了多少次模型、用了多少 tokens（推导和对话都算，新建产品时的三轮对话不算）。用的时候别关启动它的那个终端窗口。检查代码骨架、检查外部项目暂时还要用下面的终端问答。
 
 **终端问答**：双击 **`启动引擎.command`**，终端里一问一答走完全程：
 
@@ -172,23 +180,25 @@ MODEL_ID=deepseek-v4-flash
 ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 ```
 
-| 服务商 | 推荐模型 | 说明 |
-|---|---|---|
-| DeepSeek | `deepseek-v4-flash` | 推荐，项目的真实基线就是用它跑的 |
-| 智谱 GLM | `glm-5.2` | |
-| Kimi | `kimi-k2.7-code` | |
-| MiniMax | `MiniMax-M3` | |
-| Anthropic | `claude-sonnet-4-6` | 官方接口，不用填 Base URL |
+<table>
+<tr><th align="left" width="18%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">服务商</th><th align="left" width="30%">推荐模型</th><th align="left" width="52%">说明</th></tr>
+<tr><td>DeepSeek</td><td><code>deepseek-v4-flash</code></td><td>推荐，项目的真实基线就是用它跑的</td></tr>
+<tr><td>智谱 GLM</td><td><code>glm-5.2</code></td><td></td></tr>
+<tr><td>Kimi</td><td><code>kimi-k2.7-code</code></td><td></td></tr>
+<tr><td>MiniMax</td><td><code>MiniMax-M3</code></td><td></td></tr>
+<tr><td>Anthropic</td><td><code>claude-sonnet-4-6</code></td><td>官方接口，不用填 Base URL</td></tr>
+</table>
 
 各家完整的 Base URL 见 [.env.example](.env.example)。
 
 参考用量：
 
-| 操作 | 模型调用 | tokens |
-|---|---|---|
-| 一份完整方案，含一次审稿打回重写 | 6 次 | 约 4 万 |
-| 一次反向检查 | 2 次 | 约 1 万 |
-| `revise --quick` | 1 次 | 约 0.5 万 |
+<table>
+<tr><th align="left" width="56%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">操作</th><th align="left" width="22%">模型调用</th><th align="left" width="22%">tokens</th></tr>
+<tr><td>一份完整方案，含一次审稿打回重写</td><td>6 次</td><td>约 4 万</td></tr>
+<tr><td>一次反向检查</td><td>2 次</td><td>约 1 万</td></tr>
+<tr><td><code>revise --quick</code></td><td>1 次</td><td>约 0.5 万</td></tr>
+</table>
 
 每次运行默认最多 16 次调用、40 万 tokens，超出会停下并提示续跑，不会无限扣费。
 
@@ -198,14 +208,15 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 
 引擎孵化的产品，所有东西都在 `out/<产品名>/` 一个文件夹里，不会写到桌面或别的地方：
 
-| 文件 | 内容 | 谁产出 |
-|---|---|---|
-| `PRD.md` | 当前版本的需求文档，给 AI 看，带版本记录 | 引擎建模板和升版，你回答待确认问题后补全 |
-| `prd/V1.md`, `V2.md` … | 每次升版前的快照 | 引擎 |
-| `方案.md`, `plan.json` | 待确认清单、组件选型及理由、架构、工具清单、提示词草案、审稿意见 | 引擎 |
-| `skeleton/` | 代码骨架，唯一允许写产品代码的地方 | **你的 AI 编程工具**，引擎不写 |
-| `verify/` | 用 PRD 对照骨架的差距报告 | 引擎 |
-| `迭代记录.md` | 每一轮：新需求、选型变化、骨架待办、人工验证结论 | 引擎记录；人工验证结论只能由你填 |
+<table>
+<tr><th align="left" width="24%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">文件</th><th align="left" width="44%">内容</th><th align="left" width="32%">谁产出</th></tr>
+<tr><td><code>PRD.md</code></td><td>当前版本的需求文档，给 AI 看，带版本记录</td><td>引擎建模板和升版，你回答待确认问题后补全</td></tr>
+<tr><td><code>prd/V1.md</code>, <code>V2.md</code> …</td><td>每次升版前的快照</td><td>引擎</td></tr>
+<tr><td><code>方案.md</code>, <code>plan.json</code></td><td>待确认清单、组件选型及理由、架构、工具清单、提示词草案、审稿意见</td><td>引擎</td></tr>
+<tr><td><code>skeleton/</code></td><td>代码骨架，唯一允许写产品代码的地方</td><td><strong>你的 AI 编程工具</strong>，引擎不写</td></tr>
+<tr><td><code>verify/</code></td><td>用 PRD 对照骨架的差距报告</td><td>引擎</td></tr>
+<tr><td><code>迭代记录.md</code></td><td>每一轮：新需求、选型变化、骨架待办、人工验证结论</td><td>引擎记录；人工验证结论只能由你填</td></tr>
+</table>
 
 引擎不负责部署上线和上线后的运行。
 
@@ -219,14 +230,15 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 
 引擎内置 17 个组件，每个都带说明、生产级要点和可运行的参考实现 `sNN_*/code.py`。选型由固定规则完成：模型只判断需求有没有某个特征，选不选哪个组件由 [rules.py](blueprint/rules.py) 决定，同样的判断永远得到同样的选型。原则是**只选需要的，不为完整而选**。
 
-| 域 | 组件 | 什么时候需要 |
-|---|---|---|
-| 行动 | [s01 Agent Loop](s01_agent_loop/) · [s02 工具系统](s02_tool_use/) · [s14 MCP 插件](s14_mcp_plugin/) | 一切基础；需要接入外部工具生态时加 s14 |
-| 约束 | [s03 权限系统](s03_permission/) · [s04 钩子系统](s04_hooks/) | 涉及删除、支付、隐私等敏感操作；需要审计、拦截、埋点 |
-| 认知 | [s05 任务规划](s05_todo_write/) · [s07 技能加载](s07_skill_loading/) · [s09 记忆系统](s09_memory/) · [s17 目标闭环](s17_goal_loop/) | 需要跟踪进度；知识库庞大；跨会话记偏好；自动判断何时算完成 |
-| 上下文 | [s06 子 Agent](s06_subagent/) · [s08 上下文压缩](s08_context_compact/) | 子任务会撑爆上下文或可并行；长会话、日志量大 |
-| 协作 | [s10 任务系统](s10_task_system/) · [s11 后台任务](s11_background_tasks/) · [s12 定时调度](s12_cron_scheduler/) · [s13 Agent 团队](s13_agent_teams/) | 目标要持久化续跑；慢操作不能阻塞；定时触发；多任务并行且隔离 |
-| 编排 | [s15 集成 Harness](s15_integrated_harness/) · [s16 工作流运行时](s16_workflow_runtime/) | 选了 3 个以上可选组件需要归一；流程固定可以写死 |
+<table>
+<tr><th align="left" width="10%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">域</th><th align="left" width="50%">组件</th><th align="left" width="40%">什么时候需要</th></tr>
+<tr><td>行动</td><td><a href="s01_agent_loop/">s01 Agent Loop</a> · <a href="s02_tool_use/">s02 工具系统</a> · <a href="s14_mcp_plugin/">s14 MCP 插件</a></td><td>一切基础；需要接入外部工具生态时加 s14</td></tr>
+<tr><td>约束</td><td><a href="s03_permission/">s03 权限系统</a> · <a href="s04_hooks/">s04 钩子系统</a></td><td>涉及删除、支付、隐私等敏感操作；需要审计、拦截、埋点</td></tr>
+<tr><td>认知</td><td><a href="s05_todo_write/">s05 任务规划</a> · <a href="s07_skill_loading/">s07 技能加载</a> · <a href="s09_memory/">s09 记忆系统</a> · <a href="s17_goal_loop/">s17 目标闭环</a></td><td>需要跟踪进度；知识库庞大；跨会话记偏好；自动判断何时算完成</td></tr>
+<tr><td>上下文</td><td><a href="s06_subagent/">s06 子 Agent</a> · <a href="s08_context_compact/">s08 上下文压缩</a></td><td>子任务会撑爆上下文或可并行；长会话、日志量大</td></tr>
+<tr><td>协作</td><td><a href="s10_task_system/">s10 任务系统</a> · <a href="s11_background_tasks/">s11 后台任务</a> · <a href="s12_cron_scheduler/">s12 定时调度</a> · <a href="s13_agent_teams/">s13 Agent 团队</a></td><td>目标要持久化续跑；慢操作不能阻塞；定时触发；多任务并行且隔离</td></tr>
+<tr><td>编排</td><td><a href="s15_integrated_harness/">s15 集成 Harness</a> · <a href="s16_workflow_runtime/">s16 工作流运行时</a></td><td>选了 3 个以上可选组件需要归一；流程固定可以写死</td></tr>
+</table>
 
 完整的推导方法和选型表见 [BLUEPRINT.md](BLUEPRINT.md)。
 
@@ -250,18 +262,19 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 
 ## 项目结构
 
-| 位置 | 用途 |
-|---|---|
-| [使用引导.md](使用引导.md) | 用户入口：任务模板、产品循环、给 AI 的执行规则 |
-| [BLUEPRINT.md](BLUEPRINT.md) | 五步推导、五要素、七层架构与组件选型表 |
-| [blueprint/](blueprint/) | 引擎：需求拆解、规则选型、方案渲染、源码扫描、产品工作区；`web/` 是浏览器界面的服务端，`chat.py` 是界面里的几段对话，`playground.py` 是「试玩」 |
-| [web/](web/) | 浏览器界面源码（React + assistant-ui），构建产物提交在 `blueprint/web/static/` |
-| `s01`–`s17` | 17 个组件的说明、参考实现与图示 |
-| [common/](common/) | 组件参考实现共用的启动层 |
-| [scaffold/](scaffold/) · [skills/](skills/) | 项目模板；构建 Agent、代码检查等技能 |
-| [docs/](docs/) | 入门指南、真实输出示例、维护手册 |
-| [evals/](evals/) · [tests/](tests/) | 特征判断题库与回归测试 |
-| [tools/](tools/) | 双击向导及其环境脚本、示例刷新、学生打包 |
+<table>
+<tr><th align="left" width="24%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">位置</th><th align="left" width="76%">用途</th></tr>
+<tr><td><a href="使用引导.md">使用引导.md</a></td><td>用户入口：任务模板、产品循环、给 AI 的执行规则</td></tr>
+<tr><td><a href="BLUEPRINT.md">BLUEPRINT.md</a></td><td>五步推导、五要素、七层架构与组件选型表</td></tr>
+<tr><td><a href="blueprint/">blueprint/</a></td><td>引擎：需求拆解、规则选型、方案渲染、源码扫描、产品工作区；<code>web/</code> 是浏览器界面的服务端，<code>chat.py</code> 是界面里的几段对话，<code>playground.py</code> 是「试玩」</td></tr>
+<tr><td><a href="web/">web/</a></td><td>浏览器界面源码（React + assistant-ui），构建产物提交在 <code>blueprint/web/static/</code></td></tr>
+<tr><td><code>s01</code>–<code>s17</code></td><td>17 个组件的说明、参考实现与图示</td></tr>
+<tr><td><a href="common/">common/</a></td><td>组件参考实现共用的启动层</td></tr>
+<tr><td><a href="scaffold/">scaffold/</a> · <a href="skills/">skills/</a></td><td>项目模板；构建 Agent、代码检查等技能</td></tr>
+<tr><td><a href="docs/">docs/</a></td><td>入门指南、真实输出示例、维护手册</td></tr>
+<tr><td><a href="evals/">evals/</a> · <a href="tests/">tests/</a></td><td>特征判断题库与回归测试</td></tr>
+<tr><td><a href="tools/">tools/</a></td><td>双击向导及其环境脚本、示例刷新、学生打包</td></tr>
+</table>
 
 ## 开发与维护
 
@@ -277,13 +290,14 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 
 ## 文档导航
 
-| 我想… | 看这里 |
-|---|---|
-| 第一次用 | [使用引导.md](使用引导.md) |
-| 只有一个模糊想法，不知道怎么描述 | [小白入门指南](docs/beginner-guide.md) |
-| 看一份完整方案和差距报告 | [真实输出示例](docs/examples/README.md) |
-| 理解推导方法 | [BLUEPRINT.md](BLUEPRINT.md) |
-| 改规则、换模型、分发给学生 | [维护手册](docs/维护手册.md) |
+<table>
+<tr><th align="left" width="46%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">我想…</th><th align="left" width="54%">看这里</th></tr>
+<tr><td>第一次用</td><td><a href="使用引导.md">使用引导.md</a></td></tr>
+<tr><td>只有一个模糊想法，不知道怎么描述</td><td><a href="docs/beginner-guide.md">小白入门指南</a></td></tr>
+<tr><td>看一份完整方案和差距报告</td><td><a href="docs/examples/README.md">真实输出示例</a></td></tr>
+<tr><td>理解推导方法</td><td><a href="BLUEPRINT.md">BLUEPRINT.md</a></td></tr>
+<tr><td>改规则、换模型、分发给学生</td><td><a href="docs/维护手册.md">维护手册</a></td></tr>
+</table>
 
 ---
 

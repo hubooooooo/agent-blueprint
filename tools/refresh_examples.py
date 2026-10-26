@@ -15,7 +15,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PROMPT_FILES = sorted((ROOT / "blueprint/knowledge/prompts").glob("*.md")) + [ROOT / "blueprint/knowledge/__init__.py"]
+# 只算推导管线用的提示词；chat_*.md 是网页对话用的，改它们不影响方案和差距报告示例。
+PROMPT_FILES = sorted(p for p in (ROOT / "blueprint/knowledge/prompts").glob("*.md")
+                      if not p.name.startswith("chat_")) + [ROOT / "blueprint/knowledge/__init__.py"]
 EXAMPLES = ROOT / "docs/examples"
 PLAN_OUT = ROOT / "out/toy-theater-real"
 AUDIT_OUT = ROOT / "out/audit-minimal-bot-real"

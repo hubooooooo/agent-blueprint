@@ -186,6 +186,39 @@ def pending_versions(prd_text: str) -> list[str]:
     return re.findall(r"^### (V\d+)（", section, re.M)
 
 
+ANSWERS_HEADING = "## 6. 待确认问题与回答"
+
+
+def record_answers(ws: Path, answers: list[tuple[str, str]], source: str = "网页界面") -> str:
+    """把用户对待确认问题的回答写进 PRD 第 6 节末尾（下一节之前），并记一条迭代记录。不升版：回答是补全，不是新需求。"""
+    ws = Path(ws)
+    answers = [(q.strip(), a.strip()) for q, a in answers if q.strip() and a.strip()]
+    if not answers:
+        raise ValueError("没有可保存的回答")
+    text = read_prd(ws)
+    lines = [f"### 回答（{_today()}，{source}）", ""]
+    for q, a in answers:
+        lines += [f"- **问**：{_one_line(q)}", f"  **答**：{_one_line(a)}"]
+    block = "\n".join(lines) + "\n"
+    m = re.search(rf"^{re.escape(ANSWERS_HEADING)}\s*$", text, re.M)
+    if not m:
+        text = text.rstrip("\n") + f"\n\n{ANSWERS_HEADING}\n\n{block}"
+    else:
+        nxt = re.search(r"^## ", text[m.end():], re.M)
+        cut = m.end() + nxt.start() if nxt else len(text)
+        text = text[:cut].rstrip("\n") + "\n\n" + block + "\n" + text[cut:]
+    atomic_write(ws / PRD_NAME, text)
+    append_log(ws, f"V{current_version(text)} · 回答待确认问题", [
+        f"回答了 {len(answers)} 个问题，已写进 PRD.md 第 6 节",
+        "下一步：按补全后的 PRD 重新推导方案",
+    ])
+    return text
+
+
+def _one_line(text: str) -> str:
+    return re.sub(r"\s*\n\s*", " ", text)
+
+
 def bump_prd(ws: Path, requirement: str) -> tuple[int, int, str]:
     """快照当前 PRD → prd/V{n}.md，升版到 V{n+1}，把新需求追加到待消化节。返回 (旧版本, 新版本, 新文本)。"""
     ws = Path(ws)
@@ -228,6 +261,21 @@ def append_log(ws: Path, title: str, lines: list[str]) -> None:
     head = path.read_text(encoding="utf-8") if path.exists() else f"# 迭代记录 —— {Path(ws).name}\n"
     body = "\n".join(f"- {line}" for line in lines)
     atomic_write(path, head.rstrip("\n") + f"\n\n## {_today()} · {title}\n\n{body}\n")
+
+
+def log_plan(out_dir: Path, plan, doc: Path) -> None:
+    """输出目录如果是产品工作区（有 PRD.md 和 迭代记录.md），把这次推导记一条，保持循环记录完整。"""
+    out_dir = Path(out_dir)
+    if not ((out_dir / PRD_NAME).is_file() and (out_dir / LOG_NAME).is_file()):
+        return
+    version = current_version(read_prd(out_dir))
+    must = [c["id"] for c in plan.components if c["decision"] == "必选"]
+    append_log(out_dir, f"V{version} · 方案推导", [
+        f"方案：{Path(doc).name}（模型 {plan.runner}，审稿{'通过' if plan.review.get('ok') else '未完全通过，见文末意见'}）",
+        f"必选组件：{'、'.join(must)}",
+        f"待确认：{len(plan.extract.get('unknowns', []))} 条，回答写进 PRD.md 第 6 节",
+        "人工验证结论：（待填）",
+    ])
 
 
 # ---------------------------------------------------------------------------

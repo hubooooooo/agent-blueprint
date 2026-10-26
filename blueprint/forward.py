@@ -74,8 +74,15 @@ def _dump(data) -> str:
 
 
 def run_plan(input_text: str, runner: Runner, out_dir: Path, resume: bool = False,
-             log: Callable[[str], None] = print) -> tuple[Plan, Path]:
-    """执行五步推导，返回 Plan 与 方案.md 的路径。"""
+             log: Callable[[str], None] = print,
+             feature_overrides: dict[str, dict] | None = None) -> tuple[Plan, Path]:
+    """执行五步推导，返回 Plan 与 方案.md 的路径。
+
+    feature_overrides：用这些判断覆盖需求拆解里同名特征的判断（加新需求时沿用上一版，见 blueprint/stability.py）。
+    覆盖发生在拆解之后、选型之前，拆解阶段的缓存不受影响。
+    """
+    from blueprint.workspace import strip_auto_sections
+    input_text = strip_auto_sections(input_text)     # 自动整理的 PRD 小节是产物，不当输入
     if not input_text.strip():
         raise ValueError("点子或 PRD 不能为空")
     stages = StageRunner(runner, out_dir, resume=resume, log=log,
@@ -86,6 +93,8 @@ def run_plan(input_text: str, runner: Runner, out_dir: Path, resume: bool = Fals
     extract = stages.run("extract", load_prompt("extract").format(
         fact_keys=_fmt_fact_keys(), features=_fmt_features(),
         questions=_fmt_questions(), input=input_text), EXTRACT_SCHEMA, "① 需求拆解")
+    if feature_overrides:
+        extract = {**extract, "features": {**extract.get("features", {}), **feature_overrides}}
 
     # ② 领域建模
     elements = stages.run("model", load_prompt("model").format(

@@ -15,9 +15,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-# 只算推导管线用的提示词；chat_*.md 是网页对话用的，改它们不影响方案和差距报告示例。
+# 只算生成示例时用到的提示词：chat_*.md 是网页对话用的，revise_*.md 只在加新需求时用，改它们不影响方案和差距报告示例。
 PROMPT_FILES = sorted(p for p in (ROOT / "blueprint/knowledge/prompts").glob("*.md")
-                      if not p.name.startswith("chat_")) + [ROOT / "blueprint/knowledge/__init__.py"]
+                      if not p.name.startswith(("chat_", "revise_"))) + [ROOT / "blueprint/knowledge/__init__.py"]
 EXAMPLES = ROOT / "docs/examples"
 PLAN_OUT = ROOT / "out/toy-theater-real"
 AUDIT_OUT = ROOT / "out/audit-minimal-bot-real"

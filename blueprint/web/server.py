@@ -116,7 +116,7 @@ class App:
             raise ValueError("回答格式不对")
         # 界面上问的是大白话版本；写进 PRD 时带上原问题，下一轮推导能对上是哪一条
         plan = product_detail(ws)["plan"]
-        originals = {q["text"]: q["original"] for q in plan["questions"]} if plan else {}
+        originals = {q["text"]: "；".join([q["original"], *q.get("merged", [])]) for q in plan["questions"]} if plan else {}
         pairs = []
         for i in items:
             if not isinstance(i, dict):
@@ -153,14 +153,63 @@ class App:
             plan, doc = run_plan((ws / "PRD.md").read_text(encoding="utf-8"), runner, ws,
                                  resume=True, log=log)
             log_plan(ws, plan, doc)
-            try:
-                from blueprint.plain import rewrite_questions
-                rewrite_questions(plan.to_dict(), runner, ws, log=log)
-            except Exception as exc:  # noqa: BLE001 —— 大白话只是锦上添花，失败就用原问题
-                log(f"  ⚠ 问题改写没成功，先显示原问题：{friendly_error(exc)}")
+            rewrite_plain(ws, runner, log)
             log("✓ 方案已生成")
 
         return self.jobs.start("plan", slug, task)
+
+    # -- 加新需求与版本历史 ----------------------------------------------------
+
+    def revise_chat(self, slug: str, body: dict):
+        ws = resolve_workspace(self.out_root, slug)
+        model = self.chat_model()
+        return chat.revise_events(chat.parse_messages(body.get("messages")),
+                                  (ws / "PRD.md").read_text(encoding="utf-8"), model)
+
+    def start_revise(self, slug: str, body: dict):
+        """PRD 升一版、把新需求追加进去、重推方案（没变的阶段沿用缓存）。返回选型变化给页面。"""
+        ws = resolve_workspace(self.out_root, slug)
+        if not self.configured():
+            raise ValueError("还没配置模型，先到「模型设置」填好 API Key。")
+        title = (body.get("title") or "").strip()
+        requirement = (body.get("requirement") or "").strip()
+        if not requirement:
+            raise ValueError("新需求不能为空")
+        # 第一行会写进版本记录，所以把一句话标题放最前面
+        text = f"{title}\n\n{requirement}" if title else requirement
+
+        def task(log):
+            from blueprint.knowledge import COMPONENT_BY_ID
+            from blueprint.workspace import revise_workspace
+            runner = self.make_runner()
+            result = revise_workspace(ws, text, runner, log=log, warn_undigested=False, source="网页界面·加新需求")
+            rewrite_plain(ws, runner, log)
+            log(f"✓ 已升到 V{result['new_version']}，方案已重新推导")
+            return {"old_version": result["old_version"], "new_version": result["new_version"],
+                    "diff": [{"id": cid, "name": COMPONENT_BY_ID[cid].name if cid in COMPONENT_BY_ID else cid,
+                              "before": before, "after": after} for cid, before, after in result["diff"]]}
+
+        return self.jobs.start("revise", slug, task)
+
+    def history(self, slug: str) -> dict:
+        from blueprint.workspace import current_version, log_entries, version_table
+        ws = resolve_workspace(self.out_root, slug)
+        prd = (ws / "PRD.md").read_text(encoding="utf-8")
+        snapshots = sorted(int(p.stem[1:]) for p in (ws / "prd").glob("V*.md") if p.stem[1:].isdigit())
+        return {"current": current_version(prd), "versions": version_table(prd),
+                "log": log_entries(ws), "snapshots": snapshots}
+
+    def prd_text(self, slug: str, version: int | None) -> dict:
+        from blueprint.workspace import current_version
+        ws = resolve_workspace(self.out_root, slug)
+        prd = (ws / "PRD.md").read_text(encoding="utf-8")
+        current = current_version(prd)
+        if version is None or version == current:
+            return {"version": current, "text": prd, "current": True}
+        snapshot = ws / "prd" / f"V{version}.md"
+        if not snapshot.is_file():
+            raise LookupError(f"没有 V{version} 的需求文档")
+        return {"version": version, "text": snapshot.read_text(encoding="utf-8"), "current": False}
 
     def handoff(self, slug: str) -> tuple[str, bytes]:
         from blueprint.handoff import build_handoff, handoff_filename
@@ -175,6 +224,15 @@ class App:
             os.startfile(ws)  # type: ignore[attr-defined]
         else:
             subprocess.run(["xdg-open", str(ws)], check=False)
+
+
+def rewrite_plain(ws: Path, runner, log) -> None:
+    """推导后把待确认问题改成大白话并分流。只是锦上添花：失败就用原问题，不影响方案。"""
+    try:
+        from blueprint.plain import rewrite_questions
+        rewrite_questions(json.loads((ws / "plan.json").read_text(encoding="utf-8")), runner, ws, log=log)
+    except Exception as exc:  # noqa: BLE001
+        log(f"  ⚠ 问题改写没成功，先显示原问题：{friendly_error(exc)}")
 
 
 def read_key(env_path: Path) -> str:
@@ -287,6 +345,13 @@ def make_handler(app: App):
                 m = re.fullmatch(r"/api/products/([^/]+)", path)
                 if m:
                     return self._json(app.product(unquote(m.group(1))))
+                m = re.fullmatch(r"/api/products/([^/]+)/history", path)
+                if m:
+                    return self._json(app.history(unquote(m.group(1))))
+                m = re.fullmatch(r"/api/products/([^/]+)/prd", path)
+                if m:
+                    v = parse_qs(url.query).get("v", [""])[0]
+                    return self._json(app.prd_text(unquote(m.group(1)), int(v) if v.isdigit() else None))
                 m = re.fullmatch(r"/api/products/([^/]+)/handoff", path)
                 if m:
                     name, data = app.handoff(unquote(m.group(1)))
@@ -322,9 +387,13 @@ def make_handler(app: App):
                     return self._json(app.create_product(body), 201)
                 if path == "/api/chat/intake":
                     return self._stream(app.intake_chat(body))
-                m = re.fullmatch(r"/api/products/([^/]+)/(plan|reveal|chat|answers)", path)
+                m = re.fullmatch(r"/api/products/([^/]+)/(plan|reveal|chat|answers|revise-chat|revise)", path)
                 if m:
                     slug, action = unquote(m.group(1)), m.group(2)
+                    if action == "revise-chat":
+                        return self._stream(app.revise_chat(slug, body))
+                    if action == "revise":
+                        return self._json({"job": app.start_revise(slug, body).to_dict()})
                     if action == "plan":
                         return self._json({"job": app.start_plan(slug).to_dict()})
                     if action == "chat":

@@ -129,6 +129,63 @@ function makeConfirmAnswersCard(slug: string, onStarted: () => void) {
 }
 
 // ---------------------------------------------------------------------------
+// 加新需求：确认需求变更草稿
+// ---------------------------------------------------------------------------
+
+type RevisionArgs = { title: string; requirement: string }
+
+function makeConfirmRevisionCard(slug: string, nextVersion: number, onStarted: () => void) {
+  return function ConfirmRevisionCard({ args, result, status, addResult }: ToolCallMessagePartProps<RevisionArgs, StartedResult>) {
+    const [title, setTitle] = useState(args.title ?? "")
+    const [requirement, setRequirement] = useState(args.requirement ?? "")
+    const [busy, setBusy] = useState(false)
+    const [error, setError] = useState("")
+
+    if (result) return <StartedCard result={result} title={`已升到 V${nextVersion}：${title}`} />
+
+    const waiting = status.type === "requires-action"
+    const submit = async () => {
+      if (!requirement.trim()) return setError("新需求不能为空。")
+      setBusy(true)
+      setError("")
+      try {
+        const res = await api.startRevise(slug, title, requirement)
+        addResult({ slug, job: res.job })
+        onStarted() // 产品页顶部接手显示进度，推导完跳到「版本历史」看选型变化
+      } catch (err) {
+        setError((err as Error).message)
+        setBusy(false)
+      }
+    }
+
+    return (
+      <div className={CARD}>
+        <div className="mb-3 font-mono text-xs tracking-wide text-muted-foreground uppercase">需求变更草稿 · V{nextVersion}</div>
+        <label className="mb-1 block text-sm font-medium" htmlFor="rev-title">一句话标题</label>
+        <Input id="rev-title" value={title} onChange={(e) => setTitle(e.target.value)} disabled={!waiting || busy} maxLength={40} />
+        <label className="mt-3 mb-1 block text-sm font-medium" htmlFor="rev-body">新需求</label>
+        <Textarea
+          id="rev-body"
+          value={requirement}
+          onChange={(e) => setRequirement(e.target.value)}
+          disabled={!waiting || busy}
+          className="min-h-48 leading-relaxed"
+        />
+        <p className="mt-2 text-xs text-muted-foreground">
+          确认后，需求文档升到 V{nextVersion}（旧版本会留一份），方案按新需求重新推导；没变的部分沿用上次的结果，不重复花钱。
+        </p>
+        {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+        {waiting && (
+          <Button className="mt-3" size="lg" onClick={submit} disabled={busy}>
+            {busy ? "正在升级…" : `升到 V${nextVersion} 并重新推导`}
+          </Button>
+        )}
+      </div>
+    )
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 function StartedCard({ result, title }: { result: StartedResult; title: string }) {
   const job = useJob(result.job)
@@ -156,6 +213,12 @@ const ANY_OBJECT = { type: "object" } as const
 
 export const intakeToolkit: Toolkit = {
   confirm_product: { type: "human", parameters: ANY_OBJECT, render: ConfirmProductCard },
+}
+
+export function reviseToolkit(slug: string, nextVersion: number, onStarted: () => void): Toolkit {
+  return {
+    confirm_revision: { type: "human", parameters: ANY_OBJECT, render: makeConfirmRevisionCard(slug, nextVersion, onStarted) },
+  }
 }
 
 export function answersToolkit(slug: string, onStarted: () => void): Toolkit {

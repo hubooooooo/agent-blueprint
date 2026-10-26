@@ -348,3 +348,37 @@ def test_plan_job_splits_questions_and_answers_keep_original(app):
     assert job.status == "done", job.error
     prd = (app.out_root / "玩具剧场" / "PRD.md").read_text(encoding="utf-8")
     assert f"（原问题：{comp['original']}）" in prd and "**答**：不需要" in prd
+
+
+# -- 加新需求与版本历史 -----------------------------------------------------------
+
+def test_revise_job_returns_diff_and_history_tracks_versions(server, app):
+    _srv, base = server
+    wait_job(app.jobs.get(app.create_product({"name": "邮件助手", "idea": "每天整理我的邮箱，挑出要回复的"})["job"]["id"]))
+    slug = urllib.request.quote("邮件助手")
+    events = stream(base, f"/api/products/{slug}/revise-chat", [{"role": "user", "text": "删除邮件前要我确认，并留记录"}])
+    assert any(e["type"] == "suggestions" for e in events)
+
+    job = wait_job(app.start_revise("邮件助手", {"title": "删除前确认并留痕", "requirement": "删除邮件前要我确认，每次删除都留记录"}))
+    assert job.status == "done", job.error
+    assert job.result["old_version"] == 1 and job.result["new_version"] == 2
+    assert all({"id", "name", "before", "after"} <= set(d) for d in job.result["diff"])
+    assert json.loads(call(f"{base}/api/jobs/{job.id}")[1])["result"]["new_version"] == 2
+
+    history = json.loads(call(f"{base}/api/products/{slug}/history")[1])
+    assert history["current"] == 2 and history["snapshots"] == [1]
+    assert history["versions"][-1] == {"version": 2, "date": history["versions"][-1]["date"],
+                                       "change": "删除前确认并留痕", "source": "网页界面·加新需求"}
+    assert [e["title"] for e in history["log"]][-1] == "新需求"
+
+    v1 = json.loads(call(f"{base}/api/products/{slug}/prd?v=1")[1])
+    now = json.loads(call(f"{base}/api/products/{slug}/prd")[1])
+    assert not v1["current"] and "删除邮件前" not in v1["text"]
+    assert now["current"] and now["version"] == 2 and "删除邮件前" in now["text"]
+    assert call(f"{base}/api/products/{slug}/prd?v=7")[0] == 404
+
+
+def test_revise_rejects_empty_requirement(app):
+    wait_job(app.jobs.get(app.create_product({"name": "邮件助手", "idea": "整理邮件"})["job"]["id"]))
+    with pytest.raises(ValueError, match="不能为空"):
+        app.start_revise("邮件助手", {"title": "x", "requirement": "  "})

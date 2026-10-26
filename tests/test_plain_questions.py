@@ -77,3 +77,37 @@ def test_failed_rewrite_keeps_previous_pair_consistent(tmp_path):
     users, devs = plain_questions(changed, tmp_path)
     assert users[0]["text"] == "新问题 A？"                     # 新问题没有改写，就用原文
     assert [q["original"] for q in devs] == PLAN["design"]["open_questions"]   # 旧的配对仍按原文匹配，没错位
+
+
+def _write(ws, questions, items):
+    stages = ws / "stages"
+    stages.mkdir(exist_ok=True)
+    (stages / f"{PLAIN_STAGE}.source.json").write_text(json.dumps(questions, ensure_ascii=False), encoding="utf-8")
+    (stages / f"{PLAIN_STAGE}.json").write_text(json.dumps({"items": items}, ensure_ascii=False), encoding="utf-8")
+
+
+def test_duplicates_are_asked_once_and_remember_merged_originals(tmp_path):
+    qs = ["面包清单从哪来？", "红线有哪些？", "今日面包清单的载体与格式？"]
+    plan = {"unknowns": qs[:2], "design": {"open_questions": qs[2:]}, "components": []}
+    _write(tmp_path, qs, [
+        {"index": 0, "plain": "面包清单你打算怎么更新？", "audience": "user"},
+        {"index": 1, "plain": "哪些事必须你点头？", "audience": "user"},
+        {"index": 2, "plain": "同上", "audience": "user", "duplicate_of": 0},
+    ])
+    users, devs = plain_questions(plan, tmp_path)
+    assert [q["text"] for q in users] == ["面包清单你打算怎么更新？", "哪些事必须你点头？"]
+    assert users[0]["merged"] == ["今日面包清单的载体与格式？"] and devs == []
+
+
+def test_bad_duplicate_pointers_are_ignored(tmp_path):
+    qs = ["甲？", "乙？"]
+    plan = {"unknowns": qs, "design": {}, "components": []}
+    _write(tmp_path, qs, [
+        {"index": 0, "plain": "甲", "audience": "user", "duplicate_of": 1},   # 指向后面：不认
+        {"index": 1, "plain": "乙", "audience": "user", "duplicate_of": 1},   # 指向自己：不认
+    ])
+    assert [q["text"] for q in plain_questions(plan, tmp_path)[0]] == ["甲", "乙"]
+    # 被指向的那条已经不在当前问题里：不并，免得把问题弄丢
+    plan2 = {"unknowns": ["乙？"], "design": {}, "components": []}
+    _write(tmp_path, qs, [{"index": 1, "plain": "乙", "audience": "user", "duplicate_of": 0}])
+    assert [q["text"] for q in plain_questions(plan2, tmp_path)[0]] == ["乙"]

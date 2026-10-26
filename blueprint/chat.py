@@ -1,4 +1,4 @@
-"""网页界面的两段对话：新建产品时的三轮追问、逐题回答方案里的待确认问题。
+"""网页界面的三段对话：新建产品时的三轮追问、逐题回答方案里的待确认问题、给已有产品加新需求。
 
 无状态：前端每次把整段对话发过来，这里从对话里推出进行到哪一步，所以编辑、重新生成都不会错位。
 走到哪一步由代码决定，模型只负责措辞（追问、整理成需求草稿、帮用户想回答方向）。
@@ -18,6 +18,7 @@ from typing import Iterable, Iterator, Protocol
 from blueprint.knowledge import load_prompt
 
 FINISH_INTAKE = "信息够了，帮我整理"
+FINISH_REVISE = "就这样，帮我整理"
 SKIP_INTAKE = "不确定，先跳过"
 HELP = "帮我想想"
 SKIP = "跳过这题"
@@ -29,6 +30,12 @@ INTAKE_ROUNDS = (
     "用户从输入到拿到结果，中间会经过哪些步骤；需要接哪些外部系统、数据或资料。",
     "什么事绝对不能做（隐私、费用、安全上的红线）；出错了怎么办；有没有需要的专业知识。",
 )
+
+REVISE_SCHEMA = {
+    "type": "object",
+    "required": ["title", "requirement"],
+    "properties": {"title": {"type": "string"}, "requirement": {"type": "string"}},
+}
 
 SUMMARIZE_SCHEMA = {
     "type": "object",
@@ -110,8 +117,11 @@ class MockChat:
     )
 
     def stream(self, prompt: str) -> Iterator[str]:
-        if "这一题" in prompt:
-            text = ("A. 先只做最简单的版本，以后再加。\nB. 第一版就做完整，花的时间更多。\n"
+        if "新需求或改一条规则" in prompt:
+            text = ("明白，你想加一条新需求。再确认一点：这个改动做到什么程度算好？\n\n"
+                    "比如：「每天早上 8 点前推送，推送内容家长一眼能看懂」。说不清可以直接跳过。")
+        elif "这一题" in prompt:
+            text = ("A. 先只做最简单的版本 —— 上线快，以后再加。\nB. 第一版就做完整 —— 花的时间更多。\n"
                     "你可以直接回复一个字母，或者说说你自己的想法。")
         else:
             rounds = prompt.count("\n助手：") + prompt.startswith("助手：")
@@ -121,6 +131,8 @@ class MockChat:
 
     def complete_json(self, stage: str, prompt: str, schema: dict) -> dict:
         said = [line[3:] for line in prompt.splitlines() if line.startswith("用户：")]
+        if stage == "chat_revise":
+            return {"title": (said[0] if said else "新需求")[:20], "requirement": "\n\n".join(said) or "（未提及）"}
         name = re.split(r"[，。,.!！?？\s]", said[0] if said else "")[0][:12] or "未命名产品"
         idea = "\n\n".join(said) or "（未提及）"
         return {"name": name, "idea": idea}
@@ -182,7 +194,7 @@ def _resolve_option(reply: str, previous: str) -> str:
     for line in previous.splitlines():
         option = re.match(rf"^\s*{letter}\s*[.．、。:：]\s*(.+)$", line)
         if option:
-            return option.group(1).strip()
+            return re.split(r"\s*(?:——|--)\s*", option.group(1), maxsplit=1)[0].strip()   # 只记做法，不记代价
     return reply
 
 
@@ -228,3 +240,35 @@ def answer_events(questions: list[str], messages: list[Message], prd: str, model
     ack = "跳过。" if action == "skip" else "记下了。"
     yield {"type": "text", "delta": f"{ack}\n\n{format_question(questions, index)}"}
     yield {"type": "suggestions", "items": [HELP, SKIP] + ([SAVE] if answers else [])}
+
+
+# ---------------------------------------------------------------------------
+# 加新需求：最多追问一轮 → 整理成需求变更草稿
+# ---------------------------------------------------------------------------
+
+PRD_CONTEXT_LIMIT = 8000
+
+
+def _prd_context(prd: str) -> str:
+    """PRD 太长时只给前面一段：追问和整理只需要知道产品大致做什么、已有哪些规则。"""
+    return prd if len(prd) <= PRD_CONTEXT_LIMIT else prd[:PRD_CONTEXT_LIMIT] + "\n\n（后文略）"
+
+
+def revise_events(messages: list[Message], prd: str, model: ChatModel) -> Iterator[dict]:
+    said = [m.text.strip() for m in messages if m.role == "user"]
+    if not said or not said[0] or said[0] in (FINISH_REVISE, SKIP_INTAKE):
+        raise ValueError("先说说想加什么新需求")
+    answered = [t for t in said if t != FINISH_REVISE]
+    skip = (FINISH_REVISE,)
+    if said[-1] == FINISH_REVISE or len(answered) > 1:
+        yield {"type": "text", "delta": "好，我把这次的改动整理成了下面这份草稿。看看对不对，可以直接改；确认后需求文档升一版，并重新推导方案："}
+        prompt = load_prompt("chat_revise_summarize").format(
+            prd=_prd_context(prd), transcript=transcript(messages, skip=skip + (SKIP_INTAKE,)))
+        draft = model.complete_json("chat_revise", prompt, REVISE_SCHEMA)
+        yield {"type": "tool", "name": "confirm_revision",
+               "args": {"title": draft["title"].strip()[:40], "requirement": draft["requirement"].strip()}}
+        return
+    prompt = load_prompt("chat_revise_ask").format(prd=_prd_context(prd), transcript=transcript(messages, skip=skip))
+    for delta in model.stream(prompt):
+        yield {"type": "text", "delta": delta}
+    yield {"type": "suggestions", "items": [FINISH_REVISE, SKIP_INTAKE]}

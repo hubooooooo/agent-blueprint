@@ -180,3 +180,19 @@
 @layer base {
   h1, h2, h3 { letter-spacing: -0.01em; }
 }
+
+/* 文档阅读样式（PRD 原文等） */
+.doc { line-height: 1.75; font-size: 0.95rem; }
+.doc > * + * { margin-top: 0.85em; }
+.doc h1 { font-size: 1.5rem; font-weight: 600; }
+.doc h2 { font-size: 1.15rem; font-weight: 600; margin-top: 1.8em; padding-top: 0.8em; border-top: 1px solid var(--border); }
+.doc h3 { font-size: 1rem; font-weight: 600; margin-top: 1.3em; }
+.doc ul { list-style: disc; padding-left: 1.4em; }
+.doc ol { list-style: decimal; padding-left: 1.4em; }
+.doc li + li { margin-top: 0.25em; }
+.doc code { font-family: var(--font-mono); font-size: 0.85em; background: var(--muted); padding: 0.1em 0.35em; border-radius: 4px; }
+.doc table { width: 100%; border-collapse: collapse; font-size: 0.9em; display: block; overflow-x: auto; }
+.doc th, .doc td { border-bottom: 1px solid var(--border); padding: 0.4em 0.6em; text-align: left; vertical-align: top; }
+.doc td:first-child, .doc th:first-child { white-space: nowrap; }
+.doc th { font-family: var(--font-mono); font-weight: 400; font-size: 0.8em; color: var(--muted-foreground); }
+.doc blockquote { border-left: 2px solid var(--border); padding-left: 1em; color: var(--muted-foreground); }

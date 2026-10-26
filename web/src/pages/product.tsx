@@ -6,13 +6,14 @@ import { Thread } from "@/components/assistant-ui/elements/thread.aui"
 import { ChatProvider } from "@/components/chat/chat-runtime"
 import { clearChatsExcept, fingerprint } from "@/components/chat/chat-storage"
 import { RestartButton } from "@/components/chat/restart-button"
-import { answersToolkit } from "@/components/chat/tool-cards"
+import { answersToolkit, reviseToolkit } from "@/components/chat/tool-cards"
 import { Callout, ModeCallouts, PageHeader, useSettings } from "@/components/common"
 import { JobProgress, useJob } from "@/components/job-progress"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { api, chatEndpoints, handoffUrl, type ProductDetail } from "@/lib/api"
+import { api, chatEndpoints, handoffUrl, type Job, type ProductDetail } from "@/lib/api"
 import { productHref } from "@/lib/route"
+import { HistoryTab } from "@/pages/product-history"
 import { ArchitectureTab, ComponentsTab, OverviewTab, PromptTab, ReviewTab } from "@/pages/product-plan"
 
 export function ProductPage({ slug, tab }: { slug: string; tab: string }) {
@@ -41,11 +42,17 @@ export function ProductPage({ slug, tab }: { slug: string; tab: string }) {
 function ProductView({ product, tab, reload }: { product: ProductDetail; tab: string; reload: () => Promise<void> }) {
   const { settings } = useSettings()
   const onFinish = useCallback(
-    (job: { status: string }) => {
-      if (job.status === "done") toast.success("方案已更新")
+    (job: Job) => {
+      if (job.status === "done" && job.kind === "revise" && job.result) {
+        const n = job.result.diff.length
+        toast.success(`已升到 V${job.result.new_version}，${n ? `组件选型变了 ${n} 处` : "组件选型没有变化"}`)
+        location.hash = productHref(product.slug, "history") // 看这一轮改了什么
+      } else if (job.status === "done") {
+        toast.success("方案已更新")
+      }
       reload()
     },
-    [reload],
+    [reload, product.slug],
   )
   const job = useJob(product.job, onFinish)
   const plan = product.plan
@@ -115,6 +122,8 @@ function ProductView({ product, tab, reload }: { product: ProductDetail; tab: st
 const TABS = [
   ["overview", "概览"],
   ["answers", "回答问题"],
+  ["revise", "加新需求"],
+  ["history", "版本历史"],
   ["components", "组件选型"],
   ["architecture", "架构与工具"],
   ["prompt", "提示词与策略"],
@@ -159,15 +168,60 @@ function PlanTabs({ product, tab, reload, running }: { product: ProductDetail; t
         {active === "architecture" && <ArchitectureTab plan={plan} />}
         {active === "prompt" && <PromptTab plan={plan} />}
         {active === "review" && <ReviewTab plan={plan} />}
+        {active === "revise" && <RevisionTab product={product} reload={reload} running={running} />}
+        {active === "history" && (
+          <HistoryTab
+            slug={product.slug}
+            names={Object.fromEntries(plan.components.map((c) => [c.id, c.name]))}
+            refreshKey={`${product.version}:${product.updated}`}
+          />
+        )}
       </div>
 
       {plan.budget.calls ? (
         <p className="mt-12 text-center font-mono text-xs text-muted-foreground">
-          模型 {plan.runner} · 调用 {plan.budget.calls} 次 · 输入 {plan.budget.input_tokens} / 输出{" "}
+          {plan.runner === "mock" ? "离线演示" : "真实模型"} · 调用 {plan.budget.calls} 次 · 输入 {plan.budget.input_tokens} / 输出{" "}
           {plan.budget.output_tokens} tokens · 设计稿 {plan.design_attempts} 版
         </p>
       ) : null}
     </>
+  )
+}
+
+function RevisionTab({ product, reload, running }: { product: ProductDetail; reload: () => Promise<void>; running: boolean }) {
+  const { settings } = useSettings()
+  const next = product.version + 1
+  const toolkit = useMemo(() => reviseToolkit(product.slug, next, () => void reload()), [product.slug, next, reload])
+  const initialMessages = useMemo(
+    () => [{
+      role: "assistant" as const,
+      content:
+        `想加什么新功能、改什么规则？直接说就行，比如「每周日晚上给家长发一份本周小结」。\n\n` +
+        `我最多再问你一个问题，然后整理成一份草稿给你确认。确认后需求文档升到 V${next}，方案按新需求重新推导，没变的部分不重复花钱。`,
+    }],
+    [next],
+  )
+
+  if (!settings.configured) return <ModeCallouts />
+  if (running) return <Callout title="正在推导">等这一轮推导完成，再加新需求。</Callout>
+  return (
+    <ChatProvider
+      key={`revise:${product.version}`}
+      endpoint={chatEndpoints.revise(product.slug)}
+      toolkit={toolkit}
+      storageKey={`revise:${product.slug}:v${product.version}`}
+      initialMessages={initialMessages}
+    >
+      <div className="mx-auto max-w-[46rem]">
+        <div className="mb-2 flex min-h-8 items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">当前是 V{product.version}。加的新需求会记进版本历史，随时能回看。</p>
+          <RestartButton />
+        </div>
+        <div className="h-[calc(100svh-24rem)] min-h-[26rem] overflow-hidden rounded-lg border bg-background">
+          <Thread autoFocus={false} placeholder="说说新需求…" />
+        </div>
+      </div>
+    </ChatProvider>
   )
 }
 

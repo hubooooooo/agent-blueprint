@@ -112,6 +112,15 @@ export type ProductDetail = ProductSummary & {
   usage: { total: Usage; plan: Usage; chat: Usage }
 }
 
+/** 试玩开场（blueprint/playground.py）：扮演谁、开场白、可以先说的话；fingerprint 随方案变。 */
+export type PlayIntro = { role: string; scenarios: string[]; text: string; fingerprint: string }
+
+/** 试玩里模拟出来的一步动作。 */
+export type PlayStep =
+  | { kind: "tool"; tool: string; input?: string; result?: string; wire: string }
+  | { kind: "ask_owner"; who?: string; action?: string; wire: string }
+  | { kind: "blocked"; rule?: string; wire: string }
+
 export class ApiError extends Error {}
 
 async function request<T>(path: string, body?: unknown): Promise<T> {
@@ -150,6 +159,7 @@ export const api = {
     ),
   saveAnswers: (slug: string, answers: { question: string; answer: string }[]) =>
     request<{ job: Job }>(`/api/products/${enc(slug)}/answers`, { answers }),
+  playIntro: (slug: string) => request<PlayIntro>(`/api/products/${enc(slug)}/play-intro`, {}),
   reveal: (slug: string) => request<{ ok: boolean }>(`/api/products/${enc(slug)}/reveal`, {}),
   job: (id: string) => request<Job>(`/api/jobs/${enc(id)}`),
 }
@@ -160,11 +170,13 @@ export const chatEndpoints = {
   intake: "/api/chat/intake",
   answers: (slug: string) => `/api/products/${enc(slug)}/chat`,
   revise: (slug: string) => `/api/products/${enc(slug)}/revise-chat`,
+  play: (slug: string) => `/api/products/${enc(slug)}/play`,
 }
 
 export type ChatEvent =
   | { type: "text"; delta: string }
   | { type: "tool"; name: string; args: Record<string, unknown> }
+  | { type: "data"; name: string; data: Record<string, unknown> }
   | { type: "suggestions"; items: string[] }
   | { type: "error"; message: string }
   | { type: "done" }

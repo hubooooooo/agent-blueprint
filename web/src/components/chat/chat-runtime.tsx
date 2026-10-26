@@ -5,7 +5,9 @@ import {
   Tools,
   useLocalRuntime,
   type ChatModelAdapter,
+  type DataMessagePart,
   type SuggestionAdapter,
+  type TextMessagePart,
   type ThreadMessage,
   type ThreadMessageLike,
   type Toolkit,
@@ -22,11 +24,20 @@ import {
 } from "@/components/chat/chat-storage"
 import { streamChat } from "@/lib/api"
 
-/** 只把文字发给服务端；卡片（tool-call）是网页自己的事，服务端不需要。 */
+/**
+ * 只把文字发给服务端；卡片（tool-call）是网页自己的事，服务端不需要。
+ * 带 wire 字段的数据卡片（试玩里模拟的动作）按原顺序换成文字一起发回，下一轮模型才知道之前发生了什么。
+ */
 function toWire(messages: readonly ThreadMessage[]) {
   return messages.map((m) => ({
     role: m.role,
-    text: m.content.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("\n"),
+    text: m.content
+      .flatMap((p) => {
+        if (p.type === "text") return [p.text]
+        if (p.type === "data" && typeof p.data?.wire === "string") return [p.data.wire]
+        return []
+      })
+      .join("\n"),
   }))
 }
 
@@ -83,22 +94,29 @@ function ChatSession({ endpoint, toolkit, storageKey, initialMessages, initialCh
 
         setFallbackChips([])
         followUps.current = []
-        let text = ""
-        const tools: ToolCallMessagePart[] = []
-        const content = () => [...(text ? [{ type: "text" as const, text }] : []), ...tools]
+        // 文字、卡片按服务端发来的顺序排；连续的文字并成一段
+        const parts: (ToolCallMessagePart | DataMessagePart | TextMessagePart)[] = []
+        let tools = 0
+        const content = () => parts.map((p) => ({ ...p }))
 
         for await (const event of streamChat(endpoint, toWire(messages), abortSignal)) {
           if (event.type === "text") {
-            text += event.delta
+            const last = parts.at(-1)
+            if (last?.type === "text") parts[parts.length - 1] = { ...last, text: last.text + event.delta }
+            else parts.push({ type: "text", text: event.delta })
             yield { content: content() }
           } else if (event.type === "tool") {
-            tools.push({
+            tools += 1
+            parts.push({
               type: "tool-call",
-              toolCallId: `${event.name}-${tools.length}-${Date.now()}`,
+              toolCallId: `${event.name}-${tools}-${Date.now()}`,
               toolName: event.name,
               args: event.args as ToolCallMessagePart["args"],
               argsText: JSON.stringify(event.args),
             })
+            yield { content: content() }
+          } else if (event.type === "data") {
+            parts.push({ type: "data", name: event.name, data: event.data })
             yield { content: content() }
           } else if (event.type === "suggestions") {
             followUps.current = event.items
@@ -106,7 +124,7 @@ function ChatSession({ endpoint, toolkit, storageKey, initialMessages, initialCh
             throw new Error(event.message)
           }
         }
-        if (tools.length) {
+        if (tools) {
           yield { content: content(), status: { type: "requires-action", reason: "tool-calls" } }
         }
       },

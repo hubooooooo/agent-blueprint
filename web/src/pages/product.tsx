@@ -1,3 +1,4 @@
+import { useAui } from "@assistant-ui/react"
 import { DownloadIcon, FolderOpenIcon } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -14,6 +15,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { api, chatEndpoints, handoffUrl, type Job, type ProductDetail, type Usage } from "@/lib/api"
 import { productHref } from "@/lib/route"
 import { HistoryTab } from "@/pages/product-history"
+import { PlayTab, reviseSeedKey } from "@/pages/product-play"
 import { ArchitectureTab, ComponentsTab, OverviewTab, PromptTab, ReviewTab } from "@/pages/product-plan"
 
 export function ProductPage({ slug, tab }: { slug: string; tab: string }) {
@@ -122,6 +124,7 @@ function ProductView({ product, tab, reload }: { product: ProductDetail; tab: st
 const TABS = [
   ["overview", "概览"],
   ["answers", "回答问题"],
+  ["play", "试玩"],
   ["revise", "加新需求"],
   ["history", "版本历史"],
   ["components", "组件选型"],
@@ -164,6 +167,7 @@ function PlanTabs({ product, tab, reload, running }: { product: ProductDetail; t
       <div className="pt-8">
         {active === "overview" && <OverviewTab plan={plan} slug={product.slug} onAnswer={() => go("answers")} />}
         {active === "answers" && <AnswersTab product={product} reload={reload} running={running} />}
+        {active === "play" && <PlayTab product={product} />}
         {active === "components" && <ComponentsTab plan={plan} />}
         {active === "architecture" && <ArchitectureTab plan={plan} />}
         {active === "prompt" && <PromptTab plan={plan} />}
@@ -233,12 +237,29 @@ function RevisionTab({ product, reload, running }: { product: ProductDetail; rel
           <p className="text-sm text-muted-foreground">当前是 V{product.version}。加的新需求会记进版本历史，随时能回看。</p>
           <RestartButton />
         </div>
+        <SeedComposer slug={product.slug} />
         <div className="h-[calc(100svh-24rem)] min-h-[26rem] overflow-hidden rounded-lg border bg-background">
           <Thread autoFocus={false} placeholder="说说新需求…" />
         </div>
       </div>
     </ChatProvider>
   )
+}
+
+/** 从「试玩」带过来的「这里不对」放进输入框，用户可以再改，发送后照常走加新需求的对话。 */
+function SeedComposer({ slug }: { slug: string }) {
+  const aui = useAui()
+  useEffect(() => {
+    let seed: string | null = null
+    try {
+      seed = sessionStorage.getItem(reviseSeedKey(slug))
+      sessionStorage.removeItem(reviseSeedKey(slug))
+    } catch {
+      /* 读不到就是空输入框 */
+    }
+    if (seed) aui.composer.setText(seed)
+  }, [aui, slug])
+  return null
 }
 
 // 与 blueprint/chat.py 的 HELP / SKIP 一致：服务端按原文识别这两个按钮

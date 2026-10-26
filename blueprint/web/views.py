@@ -7,8 +7,8 @@ import re
 from pathlib import Path
 
 from blueprint.knowledge import COMPONENT_BY_ID, FACT_KEYS, FIVE_ELEMENTS, LAYERS
+from blueprint.plain import plain_questions
 from blueprint.render import architecture_nodes
-from blueprint.rules import describe_feature
 from blueprint.workspace import PRD_NAME, current_version, pending_versions
 
 _FACT_LABEL = {k: v.split("：")[0] for k, v in FACT_KEYS.items()}
@@ -40,15 +40,6 @@ def _load_plan(ws: Path) -> dict | None:
         return None
 
 
-def _unknowns(plan: dict) -> list[str]:
-    """与 render_plan 的「待确认清单」同口径：需求里的未知项 + 设计里的开放问题 + 待确认组件。"""
-    items = list(plan.get("unknowns", [])) + list(plan.get("design", {}).get("open_questions", []) or [])
-    for c in plan.get("components", []):
-        if c.get("decision") == "待确认":
-            items.append(f"【组件 {c['id']} {c['name']}】{describe_feature(c.get('feature', ''))}")
-    return items
-
-
 def product_summary(ws: Path) -> dict:
     prd = (ws / PRD_NAME).read_text(encoding="utf-8")
     plan = _load_plan(ws)
@@ -58,7 +49,7 @@ def product_summary(ws: Path) -> dict:
         "name": _product_name(prd, ws.name),
         "version": current_version(prd),
         "has_plan": plan is not None,
-        "unknowns": len(_unknowns(plan)) if plan else 0,
+        "unknowns": len(plain_questions(plan, ws)[0]) if plan else 0,
         "review_ok": bool(plan and plan.get("review", {}).get("ok")),
         "pending_versions": pending_versions(prd),
         "updated": max(mtimes),
@@ -73,8 +64,11 @@ def list_products(out_root: Path) -> list[dict]:
     return sorted((product_summary(ws) for ws in spaces), key=lambda s: s["updated"], reverse=True)
 
 
-def plan_view(plan: dict) -> dict:
+def plan_view(plan: dict, ws: Path | None = None) -> dict:
+    """待确认清单与 方案.md 同口径（需求未知项 + 设计开放问题 + 待确认组件），但这里用大白话版本，
+    并把只有工程师能判断的技术备注分到 dev_items（见 blueprint/plain.py）。"""
     design = plan.get("design", {})
+    questions, dev_items = plain_questions(plan, ws)
     facts = plan.get("facts", {})
     components = []
     for c in plan.get("components", []):
@@ -89,7 +83,9 @@ def plan_view(plan: dict) -> dict:
         "title": plan.get("title", ""),
         "one_liner": plan.get("one_liner", ""),
         "runner": plan.get("runner", ""),
-        "unknowns": _unknowns(plan),
+        "unknowns": [q["text"] for q in questions],
+        "questions": questions,
+        "dev_items": dev_items,
         "facts": [{"key": k, "label": label, "value": facts.get(k, {}).get("value", ""),
                    "status": facts.get(k, {}).get("status", "待确认")} for k, label in _FACT_LABEL.items()],
         "elements": [{"key": k, "label": label, "items": plan.get("elements", {}).get(k, [])}
@@ -110,4 +106,4 @@ def plan_view(plan: dict) -> dict:
 
 def product_detail(ws: Path) -> dict:
     plan = _load_plan(ws)
-    return {**product_summary(ws), "path": str(ws.resolve()), "plan": plan_view(plan) if plan else None}
+    return {**product_summary(ws), "path": str(ws.resolve()), "plan": plan_view(plan, ws) if plan else None}

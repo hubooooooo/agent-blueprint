@@ -313,3 +313,38 @@ def test_save_answers_rejects_empty(app):
     wait_job(app.jobs.get(app.create_product({"name": "玩具剧场", "idea": IDEA})["job"]["id"]))
     with pytest.raises(ValueError, match="没有可保存"):
         app.save_answers("玩具剧场", {"answers": [{"question": "q", "answer": "  "}]})
+
+
+# -- 交接包与大白话问题 -----------------------------------------------------------
+
+def test_handoff_download_over_http(server, app):
+    _srv, base = server
+    wait_job(app.jobs.get(app.create_product({"name": "玩具剧场", "idea": IDEA})["job"]["id"]))
+    status, body, headers = call(f"{base}/api/products/{urllib.request.quote('玩具剧场')}/handoff")
+    assert status == 200 and headers["Content-Type"] == "application/zip"
+    assert "filename*=UTF-8''" + urllib.request.quote("玩具剧场-交接包-V1.zip") in headers["Content-Disposition"]
+    import io
+    import zipfile
+    assert "玩具剧场-交接包/交接说明.md" in zipfile.ZipFile(io.BytesIO(body)).namelist()
+
+
+def test_handoff_without_plan_is_a_plain_400(server, app):
+    from blueprint.workspace import init_workspace
+    _srv, base = server
+    init_workspace(app.out_root, "只有点子", "一个想法")
+    status, body, _ = call(f"{base}/api/products/{urllib.request.quote('只有点子')}/handoff")
+    assert status == 400 and "还没有方案" in json.loads(body)["error"]
+
+
+def test_plan_job_splits_questions_and_answers_keep_original(app):
+    wait_job(app.jobs.get(app.create_product({"name": "玩具剧场", "idea": IDEA})["job"]["id"]))
+    plan = app.product("玩具剧场")["plan"]
+    assert plan["unknowns"] == [q["text"] for q in plan["questions"]]
+    assert isinstance(plan["dev_items"], list)
+    comp = next(q for q in plan["questions"] if q.get("component"))
+    assert comp["text"] != comp["original"] and "（关系到组件" in comp["text"]
+
+    job = wait_job(app.jobs.get(app.save_answers("玩具剧场", {"answers": [{"question": comp["text"], "answer": "不需要"}]})["job"]["id"]))
+    assert job.status == "done", job.error
+    prd = (app.out_root / "玩具剧场" / "PRD.md").read_text(encoding="utf-8")
+    assert f"（原问题：{comp['original']}）" in prd and "**答**：不需要" in prd

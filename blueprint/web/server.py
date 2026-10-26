@@ -15,7 +15,7 @@ import sys
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from blueprint import chat, providers
 from blueprint.web.jobs import JobManager, friendly_error
@@ -114,7 +114,16 @@ class App:
         items = body.get("answers")
         if not isinstance(items, list):
             raise ValueError("回答格式不对")
-        pairs = [(str(i.get("question") or ""), str(i.get("answer") or "")) for i in items if isinstance(i, dict)]
+        # 界面上问的是大白话版本；写进 PRD 时带上原问题，下一轮推导能对上是哪一条
+        plan = product_detail(ws)["plan"]
+        originals = {q["text"]: q["original"] for q in plan["questions"]} if plan else {}
+        pairs = []
+        for i in items:
+            if not isinstance(i, dict):
+                continue
+            q = str(i.get("question") or "")
+            original = originals.get(q, q)
+            pairs.append((q if original == q else f"{q}（原问题：{original}）", str(i.get("answer") or "")))
         if not self.configured():
             raise ValueError("还没配置模型，先到「模型设置」填好 API Key。")
         record_answers(ws, pairs)
@@ -140,12 +149,23 @@ class App:
         def task(log):
             from blueprint.forward import run_plan
             from blueprint.workspace import log_plan
-            plan, doc = run_plan((ws / "PRD.md").read_text(encoding="utf-8"), self.make_runner(), ws,
+            runner = self.make_runner()
+            plan, doc = run_plan((ws / "PRD.md").read_text(encoding="utf-8"), runner, ws,
                                  resume=True, log=log)
             log_plan(ws, plan, doc)
+            try:
+                from blueprint.plain import rewrite_questions
+                rewrite_questions(plan.to_dict(), runner, ws, log=log)
+            except Exception as exc:  # noqa: BLE001 —— 大白话只是锦上添花，失败就用原问题
+                log(f"  ⚠ 问题改写没成功，先显示原问题：{friendly_error(exc)}")
             log("✓ 方案已生成")
 
         return self.jobs.start("plan", slug, task)
+
+    def handoff(self, slug: str) -> tuple[str, bytes]:
+        from blueprint.handoff import build_handoff, handoff_filename
+        ws = resolve_workspace(self.out_root, slug)
+        return handoff_filename(ws), build_handoff(ws)
 
     def reveal(self, slug: str) -> None:
         ws = resolve_workspace(self.out_root, slug)
@@ -189,9 +209,11 @@ def make_handler(app: App):
 
         # -- 响应 -------------------------------------------------------------
 
-        def _send(self, status: int, body: bytes, content_type: str) -> None:
+        def _send(self, status: int, body: bytes, content_type: str, headers: dict | None = None) -> None:
             self.send_response(status)
             self.send_header("Content-Type", content_type)
+            for k, v in (headers or {}).items():
+                self.send_header(k, v)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
@@ -265,6 +287,12 @@ def make_handler(app: App):
                 m = re.fullmatch(r"/api/products/([^/]+)", path)
                 if m:
                     return self._json(app.product(unquote(m.group(1))))
+                m = re.fullmatch(r"/api/products/([^/]+)/handoff", path)
+                if m:
+                    name, data = app.handoff(unquote(m.group(1)))
+                    # 中文文件名按 RFC 6266 用 filename* 传；filename 给不认识 filename* 的老浏览器兜底
+                    disposition = f"attachment; filename=\"handoff.zip\"; filename*=UTF-8''{quote(name)}"
+                    return self._send(200, data, "application/zip", {"Content-Disposition": disposition})
                 m = re.fullmatch(r"/api/jobs/([^/]+)", path)
                 if m:
                     job = app.jobs.get(m.group(1))
@@ -277,6 +305,8 @@ def make_handler(app: App):
                 return self._static(path)
             except LookupError as exc:
                 return self._error(404, str(exc))
+            except ValueError as exc:
+                return self._error(400, str(exc))
 
         def do_POST(self):
             if not self._host_ok() or not self._origin_ok():

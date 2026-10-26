@@ -32,6 +32,19 @@ export type Job = {
   error: string
   started: number
   finished: number | null
+  /** 加新需求的任务结束后带回来：升了哪一版、选型怎么变的 */
+  result?: RevisionResult | null
+}
+
+export type ComponentChange = { id: string; name: string; before: string; after: string }
+export type RevisionResult = { old_version: number; new_version: number; diff: ComponentChange[] }
+
+export type HistoryEntry = { date: string; version: number | null; title: string; lines: string[] }
+export type History = {
+  current: number
+  versions: { version: number; date: string; change: string; source: string }[]
+  log: HistoryEntry[]
+  snapshots: number[]
 }
 
 export type Decision = "必选" | "二期" | "待确认" | "放弃"
@@ -124,6 +137,13 @@ export const api = {
   createProduct: (name: string, idea: string) =>
     request<{ slug: string; job: Job }>("/api/products", { name, idea }),
   startPlan: (slug: string) => request<{ job: Job }>(`/api/products/${enc(slug)}/plan`, {}),
+  startRevise: (slug: string, title: string, requirement: string) =>
+    request<{ job: Job }>(`/api/products/${enc(slug)}/revise`, { title, requirement }),
+  history: (slug: string) => request<History>(`/api/products/${enc(slug)}/history`),
+  prd: (slug: string, version?: number) =>
+    request<{ version: number; text: string; current: boolean }>(
+      `/api/products/${enc(slug)}/prd${version ? `?v=${version}` : ""}`,
+    ),
   saveAnswers: (slug: string, answers: { question: string; answer: string }[]) =>
     request<{ job: Job }>(`/api/products/${enc(slug)}/answers`, { answers }),
   reveal: (slug: string) => request<{ ok: boolean }>(`/api/products/${enc(slug)}/reveal`, {}),
@@ -135,6 +155,7 @@ export const handoffUrl = (slug: string) => `/api/products/${enc(slug)}/handoff`
 export const chatEndpoints = {
   intake: "/api/chat/intake",
   answers: (slug: string) => `/api/products/${enc(slug)}/chat`,
+  revise: (slug: string) => `/api/products/${enc(slug)}/revise-chat`,
 }
 
 export type ChatEvent =

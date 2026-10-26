@@ -47,6 +47,7 @@ PLAIN_SCHEMA = {
                     "index": {"type": "integer"},
                     "plain": {"type": "string"},
                     "audience": {"type": "string", "enum": ["user", "dev"]},
+                    "duplicate_of": {"type": "integer"},
                 },
             },
         }
@@ -85,17 +86,30 @@ def load_rewrites(ws: Path) -> dict[str, dict]:
     for item in items:
         i = item.get("index")
         if isinstance(i, int) and 0 <= i < len(questions) and str(item.get("plain", "")).strip():
-            out[questions[i]] = {"plain": str(item["plain"]).strip(), "audience": item.get("audience", "user")}
+            dup = item.get("duplicate_of")
+            out[questions[i]] = {"plain": str(item["plain"]).strip(), "audience": item.get("audience", "user"),
+                                 # 只认指向前面的编号，记原文：问题列表变了也不会错并
+                                 "duplicate_of": questions[dup] if isinstance(dup, int) and 0 <= dup < i else None}
     return out
 
 
 def plain_questions(plan: dict, ws: Path | None = None) -> tuple[list[dict], list[dict]]:
-    """返回（问提出想法的人的问题, 交给开发者的技术备注），每项 {"text", "original", ...}。"""
+    """返回（问提出想法的人的问题, 交给开发者的技术备注），每项 {"text", "original", ...}。
+
+    模型判定为重复的问题并进前面那条：界面只问一次，被并掉的原问题记在 "merged" 里，写回 PRD 时一起带上。
+    """
     rewrites = load_rewrites(ws) if ws else {}
-    users, devs = [], []
-    for q in model_questions(plan):
+    questions = model_questions(plan)
+    present = set(questions)
+    users, devs, by_original = [], [], {}
+    for q in questions:
         r = rewrites.get(q)
+        target = r.get("duplicate_of") if r else None
+        if target in present and target in by_original:
+            by_original[target].setdefault("merged", []).append(q)
+            continue
         item = {"text": r["plain"] if r else q, "original": q}
+        by_original[q] = item
         (devs if r and r["audience"] == "dev" else users).append(item)
     users += component_questions(plan)
     return users, devs

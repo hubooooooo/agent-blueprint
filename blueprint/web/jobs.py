@@ -46,6 +46,7 @@ class Job:
     status: str = "running"          # running | done | failed
     logs: list[str] = field(default_factory=list)
     error: str = ""
+    result: dict | None = None        # 任务函数的返回值，比如加新需求后的选型变化
     started: float = field(default_factory=time.time)
     finished: float | None = None
 
@@ -54,7 +55,7 @@ class Job:
 
     def to_dict(self, since: int = 0) -> dict:
         return {"id": self.id, "kind": self.kind, "slug": self.slug, "status": self.status,
-                "logs": self.logs[since:], "log_count": len(self.logs), "error": self.error,
+                "logs": self.logs[since:], "log_count": len(self.logs), "error": self.error, "result": self.result,
                 "started": self.started, "finished": self.finished}
 
 
@@ -65,7 +66,7 @@ class JobManager:
         self._lock = threading.Lock()
         self._ids = itertools.count(1)
 
-    def start(self, kind: str, slug: str, fn: Callable[[Callable[[str], None]], None]) -> Job:
+    def start(self, kind: str, slug: str, fn: Callable[[Callable[[str], None]], dict | None]) -> Job:
         with self._lock:
             current = self.latest_for(slug)
             if current and current.status == "running":
@@ -76,9 +77,9 @@ class JobManager:
         threading.Thread(target=self._run, args=(job, fn), daemon=True).start()
         return job
 
-    def _run(self, job: Job, fn: Callable[[Callable[[str], None]], None]) -> None:
+    def _run(self, job: Job, fn: Callable[[Callable[[str], None]], dict | None]) -> None:
         try:
-            fn(job.log)
+            job.result = fn(job.log)
             job.status = "done"
         except Exception as exc:  # noqa: BLE001 —— 任何失败都要落到页面上，不能让线程悄悄死掉
             job.error = friendly_error(exc)

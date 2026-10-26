@@ -87,3 +87,32 @@ def test_anthropic_chat_streams_text_and_records_budget():
     from blueprint.chat import SUMMARIZE_SCHEMA
     assert model.complete_json("chat_summarize", "对话", SUMMARIZE_SCHEMA) == {"name": "邮件助手", "idea": "整理邮件"}
     assert runner.budget.calls == 2
+
+
+def test_revise_chat_asks_once_then_drafts():
+    from blueprint.chat import FINISH_REVISE, SKIP_INTAKE, MockChat, revise_events
+    model = MockChat()
+    first = list(revise_events(conv(("user", "每周日给家长发小结")), "PRD", model))
+    assert first[-1] == {"type": "suggestions", "items": [FINISH_REVISE, SKIP_INTAKE]}
+    assert not any(e["type"] == "tool" for e in first)
+    second = list(revise_events(conv(("user", "每周日给家长发小结"), ("assistant", "q"), ("user", "晚上 8 点")), "PRD", model))
+    [tool] = [e for e in second if e["type"] == "tool"]
+    assert tool["name"] == "confirm_revision" and "晚上 8 点" in tool["args"]["requirement"]
+    early = list(revise_events(conv(("user", "每周日给家长发小结"), ("user", FINISH_REVISE)), "PRD", model))
+    assert any(e["type"] == "tool" for e in early)
+
+
+def test_revise_chat_needs_a_requirement_first():
+    import pytest
+
+    from blueprint.chat import FINISH_REVISE, MockChat, revise_events
+    with pytest.raises(ValueError, match="新需求"):
+        list(revise_events(conv(("user", FINISH_REVISE)), "PRD", MockChat()))
+
+
+def test_option_letter_keeps_only_the_choice_not_the_tradeoff():
+    _i, answers, _a = answer_state(QS, conv(
+        ("assistant", "A. 一律先问店主 —— 最稳妥，但你要多点几下\n\nB. 只限制打折 -- 流程少一步"), ("user", "a")))
+    assert answers == {0: "一律先问店主"}
+    _i, answers, _a = answer_state(QS, conv(("assistant", "B. 只限制打折 -- 流程少一步"), ("user", "B")))
+    assert answers == {0: "只限制打折"}

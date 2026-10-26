@@ -175,9 +175,14 @@ def format_question(questions: list[str], index: int) -> str:
     return f"**第 {index + 1} / {len(questions)} 题**\n\n{questions[index]}"
 
 
-def answer_intro(questions: list[str]) -> str:
-    """第一条消息由网页直接显示（不走模型），所以开场白放在这里，前后端共用一份。"""
-    return (f"方案里有 {len(questions)} 个还没想清楚的问题，我们一题一题过。"
+def answer_intro(questions: list[str], key_count: int = 0) -> str:
+    """第一条消息由网页直接显示（不走模型），所以开场白放在这里，前后端共用一份。
+
+    key_count：排在最前面的关键问题有几个（见 blueprint/plain.py 的 priority）。
+    """
+    key = (f"最前面 {key_count} 个最关键，答完它们就可以点「先保存已回答的」，先按这些重新推导。"
+           if 0 < key_count < len(questions) else "")
+    return (f"方案里有 {len(questions)} 个还没想清楚的问题，我们一题一题过。{key}"
             "想好的直接回答；拿不准的点「帮我想想」，我给你几个方向；实在不知道就跳过。\n\n"
             + format_question(questions, 0))
 

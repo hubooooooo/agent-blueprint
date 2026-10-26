@@ -12,6 +12,17 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // 界面用到的颜色写法需要 Safari 16.4 / Chrome 111 及以上；旧浏览器上会显示错乱，干脆直接说明原因
+      if (!(window.CSS && CSS.supports("color", "color-mix(in oklab, red, blue)"))) {
+        window.__blueprintUnsupported = true
+        document.getElementById("root").innerHTML =
+          '<div style="max-width:32rem;margin:15vh auto;padding:0 24px;font:16px/1.7 -apple-system,sans-serif;color:#222">' +
+          '<h1 style="font-size:22px">浏览器版本太旧，界面显示不了</h1>' +
+          '<p>请把 Safari 升级到 16.4 或更新（在「系统设置 → 通用 → 软件更新」里更新 macOS），或者安装 Chrome 后，把地址栏里的网址复制到 Chrome 打开。</p>' +
+          '<p style="color:#666">也可以改用终端问答：双击引擎目录里的「启动引擎.command」。</p></div>'
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

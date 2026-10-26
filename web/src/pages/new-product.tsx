@@ -1,5 +1,6 @@
 import { Thread } from "@/components/assistant-ui/elements/thread.aui"
 import { ChatProvider } from "@/components/chat/chat-runtime"
+import { RestartButton } from "@/components/chat/restart-button"
 import { intakeToolkit } from "@/components/chat/tool-cards"
 import { Eyebrow, ModeCallouts, useSettings } from "@/components/common"
 import { chatEndpoints } from "@/lib/api"
@@ -38,11 +39,14 @@ export function NewProductPage() {
           <ModeCallouts />
         </div>
       )}
-      <div className="min-h-0 flex-1">
-        <ChatProvider endpoint={chatEndpoints.intake} toolkit={intakeToolkit} starters={STARTERS}>
+      <ChatProvider endpoint={chatEndpoints.intake} toolkit={intakeToolkit} starters={STARTERS} storageKey="intake">
+        <div className="mx-auto flex w-full max-w-[44rem] justify-end px-4 pt-2">
+          <RestartButton label="重新开始新产品" />
+        </div>
+        <div className="min-h-0 flex-1">
           <Thread components={{ Welcome }} placeholder="说说你的想法…" />
-        </ChatProvider>
-      </div>
+        </div>
+      </ChatProvider>
     </div>
   )
 }

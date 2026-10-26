@@ -129,8 +129,6 @@ export type ThreadProps = {
   components?: ThreadComponents | undefined;
   autoFocus?: boolean | undefined;
   placeholder?: string | undefined;
-  /** 开场就显示的快捷按钮（开场白由网页直接放入、还没有经过一次回复时用）。 */
-  initialSuggestions?: readonly string[] | undefined;
 };
 
 const EMPTY_COMPONENTS: ThreadComponents = {};
@@ -138,7 +136,6 @@ const EMPTY_COMPONENTS: ThreadComponents = {};
 const ThreadComponentsContext =
   createContext<ThreadComponents>(EMPTY_COMPONENTS);
 const PlaceholderContext = createContext("输入你的回答…");
-const InitialSuggestionsContext = createContext<readonly string[] | undefined>(undefined);
 
 // Startup exposes a loading placeholder thread; treat it as a new chat so
 // the composer mounts centered. Loads after startup keep the docked layout.
@@ -178,16 +175,13 @@ export const Thread: FC<ThreadProps> = ({
   components = EMPTY_COMPONENTS,
   autoFocus = true,
   placeholder = "输入你的回答…",
-  initialSuggestions,
 }) => {
   const isEmpty = useAuiState(isNewChatView);
 
   return (
     <ThreadComponentsContext.Provider value={components}>
       <PlaceholderContext.Provider value={placeholder}>
-        <InitialSuggestionsContext.Provider value={initialSuggestions}>
-          <ThreadRoot isEmpty={isEmpty} autoFocus={autoFocus} />
-        </InitialSuggestionsContext.Provider>
+        <ThreadRoot isEmpty={isEmpty} autoFocus={autoFocus} />
       </PlaceholderContext.Provider>
     </ThreadComponentsContext.Provider>
   );
@@ -198,7 +192,6 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
   autoFocus,
 }) => {
   const { Welcome = ThreadWelcome } = useContext(ThreadComponentsContext);
-  const initialSuggestions = useContext(InitialSuggestionsContext);
 
   return (
     <ThreadPrimitive.Root
@@ -248,7 +241,7 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
             )}
           >
             <ThreadScrollToBottom />
-            <ThreadFollowupSuggestions initial={initialSuggestions} />
+            <ThreadFollowupSuggestions />
             <Composer autoFocus={autoFocus} />
             <AuiIf condition={(s) => isNewChatView(s) && s.composer.isEmpty}>
               <ThreadSuggestions />

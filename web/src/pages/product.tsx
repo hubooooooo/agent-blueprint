@@ -4,6 +4,8 @@ import { toast } from "sonner"
 
 import { Thread } from "@/components/assistant-ui/elements/thread.aui"
 import { ChatProvider } from "@/components/chat/chat-runtime"
+import { clearChatsExcept, fingerprint } from "@/components/chat/chat-storage"
+import { RestartButton } from "@/components/chat/restart-button"
 import { answersToolkit } from "@/components/chat/tool-cards"
 import { Callout, ModeCallouts, PageHeader, useSettings } from "@/components/common"
 import { JobProgress, useJob } from "@/components/job-progress"
@@ -173,6 +175,10 @@ function AnswersTab({ product, reload, running }: { product: ProductDetail; relo
     () => [{ role: "assistant" as const, content: product.answer_intro }],
     [product.answer_intro],
   )
+  // 同一版问题共用一段对话；方案一变（问题变了）就换新的，旧的删掉
+  const prefix = `answers:${product.slug}:`
+  const storageKey = prefix + fingerprint(questions)
+  useEffect(() => clearChatsExcept(prefix, storageKey), [prefix, storageKey])
 
   if (!questions.length) {
     return <Callout title="没有待确认的问题">方案里的信息很完整，不需要再补充。</Callout>
@@ -182,16 +188,23 @@ function AnswersTab({ product, reload, running }: { product: ProductDetail; relo
     return <Callout title="正在按你的回答重新推导">推导完成后，这里会换成新方案里的问题。</Callout>
   }
   return (
-    <div className="mx-auto h-[calc(100svh-22rem)] min-h-[26rem] max-w-[46rem] overflow-hidden rounded-lg border bg-background">
-      {/* 方案一变（版本或问题变了）就换一段新对话 */}
-      <ChatProvider
-        key={`${product.version}:${product.updated}`}
-        endpoint={chatEndpoints.answers(product.slug)}
-        toolkit={toolkit}
-        initialMessages={initialMessages}
-      >
-        <Thread autoFocus={false} placeholder="输入你的回答…" initialSuggestions={OPENING_CHIPS} />
-      </ChatProvider>
-    </div>
+    <ChatProvider
+      key={storageKey}
+      endpoint={chatEndpoints.answers(product.slug)}
+      toolkit={toolkit}
+      storageKey={storageKey}
+      initialMessages={initialMessages}
+      initialChips={OPENING_CHIPS}
+    >
+      <div className="mx-auto max-w-[46rem]">
+        <div className="mb-2 flex min-h-8 items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">回答会自动保存在这台电脑的浏览器里，切走再回来可以接着答。</p>
+          <RestartButton />
+        </div>
+        <div className="h-[calc(100svh-24rem)] min-h-[26rem] overflow-hidden rounded-lg border bg-background">
+          <Thread autoFocus={false} placeholder="输入你的回答…" />
+        </div>
+      </div>
+    </ChatProvider>
   )
 }

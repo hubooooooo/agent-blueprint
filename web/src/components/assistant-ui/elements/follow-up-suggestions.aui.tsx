@@ -1,7 +1,9 @@
 "use client";
 
 import { AuiIf, useAuiState, ThreadPrimitive } from "@assistant-ui/react";
-import { useCallback, useEffect, useRef, useState, type FC } from "react";
+import { useCallback, useContext, useEffect, useRef, useState, type FC } from "react";
+
+import { FallbackChipsContext } from "@/components/chat/chat-storage";
 
 type Item = { prompt: string; title?: string | undefined; label?: string | undefined };
 
@@ -71,14 +73,13 @@ const FollowupSuggestionsRow: FC<{ suggestions: readonly Item[] }> = ({ suggesti
 };
 
 /**
- * 回复下方的快捷按钮。`initial` 用于对话开场：开场白是网页直接放进去的，
- * 还没有经过一次回复，运行时里没有建议，这时先显示这一组。
+ * 回复下方的快捷按钮。运行时里没有建议时（开场白、从本地恢复的对话还没经过一次回复），
+ * 用 ChatProvider 给的兜底按钮。
  */
-export const ThreadFollowupSuggestions: FC<{ initial?: readonly string[] | undefined }> = ({ initial }) => {
+export const ThreadFollowupSuggestions: FC = () => {
   const runtime = useAuiState((s) => s.thread.suggestions);
-  const opening = useAuiState((s) => !s.thread.messages.some((m) => m.role === "user"));
-  const items: readonly Item[] =
-    runtime.length > 0 ? runtime : opening && initial ? initial.map((prompt) => ({ prompt })) : [];
+  const fallback = useContext(FallbackChipsContext);
+  const items: readonly Item[] = runtime.length > 0 ? runtime : fallback.map((prompt) => ({ prompt }));
   return (
     <AuiIf condition={(s) => !s.thread.isEmpty && !s.thread.isRunning}>
       {items.length > 0 && <FollowupSuggestionsRow suggestions={items} />}

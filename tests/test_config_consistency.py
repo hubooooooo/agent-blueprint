@@ -29,9 +29,9 @@ def test_default_model_is_consistent_everywhere():
     m = re.search(r"^model:\s*(\S+)", config, re.M)
     assert m and m.group(1) == DEFAULT_MODEL
 
-    wizard = (ROOT / "tools/wizard.py").read_text(encoding="utf-8")
-    m = re.search(r'"key": "anthropic".*?"model": "([^"]+)"', wizard, re.S)
-    assert m and m.group(1) == DEFAULT_MODEL, "tools/wizard.py 的 Anthropic 默认模型不一致"
+    from blueprint.providers import PROVIDER_BY_KEY
+    assert PROVIDER_BY_KEY["anthropic"]["model"] == DEFAULT_MODEL, \
+        "blueprint/providers.py 的 Anthropic 默认模型不一致（向导和网页界面共用）"
 
 
 def test_requirements_include_pytest_and_ci_does_not_reinstall_it():

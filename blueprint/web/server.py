@@ -18,6 +18,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from blueprint import chat, providers
+from blueprint.usage import record_usage
 from blueprint.web.jobs import JobManager, friendly_error
 from blueprint.web.views import list_products, product_detail, resolve_workspace
 
@@ -106,8 +107,8 @@ class App:
         if not plan:
             raise ValueError("还没有方案，先生成方案再回答问题。")
         model = self.chat_model()
-        return chat.answer_events(plan["unknowns"], chat.parse_messages(body.get("messages")),
-                                  (ws / "PRD.md").read_text(encoding="utf-8"), model)
+        return metered(ws, model, chat.answer_events(plan["unknowns"], chat.parse_messages(body.get("messages")),
+                                                     (ws / "PRD.md").read_text(encoding="utf-8"), model))
 
     def save_answers(self, slug: str, body: dict) -> dict:
         from blueprint.workspace import record_answers
@@ -151,11 +152,14 @@ class App:
             from blueprint.forward import run_plan
             from blueprint.workspace import log_plan
             runner = self.make_runner()
-            plan, doc = run_plan((ws / "PRD.md").read_text(encoding="utf-8"), runner, ws,
-                                 resume=True, log=log)
-            log_plan(ws, plan, doc)
-            rewrite_plain(ws, runner, log)
-            fill_prd_sections(ws, runner, log)
+            try:
+                plan, doc = run_plan((ws / "PRD.md").read_text(encoding="utf-8"), runner, ws,
+                                     resume=True, log=log)
+                log_plan(ws, plan, doc)
+                rewrite_plain(ws, runner, log)
+                fill_prd_sections(ws, runner, log)
+            finally:   # 中途失败，已经发生的调用也照样计入
+                record_usage(ws, "plan", getattr(runner, "budget", None))
             log("✓ 方案已生成")
 
         return self.jobs.start("plan", slug, task)
@@ -165,8 +169,8 @@ class App:
     def revise_chat(self, slug: str, body: dict):
         ws = resolve_workspace(self.out_root, slug)
         model = self.chat_model()
-        return chat.revise_events(chat.parse_messages(body.get("messages")),
-                                  (ws / "PRD.md").read_text(encoding="utf-8"), model)
+        return metered(ws, model, chat.revise_events(chat.parse_messages(body.get("messages")),
+                                                     (ws / "PRD.md").read_text(encoding="utf-8"), model))
 
     def start_revise(self, slug: str, body: dict):
         """PRD 升一版、把新需求追加进去、重推方案（没变的阶段沿用缓存）。返回选型变化给页面。"""
@@ -184,9 +188,12 @@ class App:
             from blueprint.knowledge import COMPONENT_BY_ID
             from blueprint.workspace import revise_workspace
             runner = self.make_runner()
-            result = revise_workspace(ws, text, runner, log=log, warn_undigested=False, source="网页界面·加新需求")
-            rewrite_plain(ws, runner, log)
-            fill_prd_sections(ws, runner, log)
+            try:
+                result = revise_workspace(ws, text, runner, log=log, warn_undigested=False, source="网页界面·加新需求")
+                rewrite_plain(ws, runner, log)
+                fill_prd_sections(ws, runner, log)
+            finally:
+                record_usage(ws, "plan", getattr(runner, "budget", None))
             log(f"✓ 已升到 V{result['new_version']}，方案已重新推导")
             return {"old_version": result["old_version"], "new_version": result["new_version"],
                     "diff": [{"id": cid, "name": COMPONENT_BY_ID[cid].name if cid in COMPONENT_BY_ID else cid,
@@ -227,6 +234,15 @@ class App:
             os.startfile(ws)  # type: ignore[attr-defined]
         else:
             subprocess.run(["xdg-open", str(ws)], check=False)
+
+
+def metered(ws: Path, model, events):
+    """对话回复发完（或中途断开）后，把这次对话调用模型的用量记到产品名下。"""
+    try:
+        yield from events
+    finally:
+        runner = getattr(model, "runner", None)
+        record_usage(ws, "chat", getattr(runner, "budget", None))
 
 
 def rewrite_plain(ws: Path, runner, log) -> None:
@@ -331,6 +347,8 @@ def make_handler(app: App):
                 emit({"type": "done"})
             except (BrokenPipeError, ConnectionResetError):
                 pass                                  # 用户点了停止或关了页面
+            finally:
+                getattr(events, "close", lambda: None)()   # 让生成器的收尾（记用量）马上执行
 
         def _static(self, path: str) -> None:
             name = "index.html" if path in ("/", "/index.html") else path.removeprefix("/static/")

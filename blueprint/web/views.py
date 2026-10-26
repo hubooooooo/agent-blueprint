@@ -9,6 +9,7 @@ from pathlib import Path
 from blueprint.knowledge import COMPONENT_BY_ID, FACT_KEYS, FIVE_ELEMENTS, LAYERS
 from blueprint.plain import plain_questions
 from blueprint.render import architecture_nodes
+from blueprint.usage import read_usage
 from blueprint.workspace import PRD_NAME, current_version, pending_versions
 
 _FACT_LABEL = {k: v.split("：")[0] for k, v in FACT_KEYS.items()}
@@ -106,4 +107,5 @@ def plan_view(plan: dict, ws: Path | None = None) -> dict:
 
 def product_detail(ws: Path) -> dict:
     plan = _load_plan(ws)
-    return {**product_summary(ws), "path": str(ws.resolve()), "plan": plan_view(plan, ws) if plan else None}
+    return {**product_summary(ws), "path": str(ws.resolve()), "plan": plan_view(plan, ws) if plan else None,
+            "usage": read_usage(ws)}

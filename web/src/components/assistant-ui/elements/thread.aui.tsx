@@ -93,6 +93,8 @@ export type ThreadComponents = {
     | ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>>
     | undefined;
   TaskGroup?: ComponentType<{ group: ThreadGroupPart }> | undefined;
+  /** 用户在确认卡片上点了确认、对话结束后，替换输入框显示。 */
+  Finished?: ComponentType | undefined;
 };
 
 const messageGroupBy = groupPartByType({
@@ -143,6 +145,12 @@ const isNewChatView = (s: AssistantState) =>
   s.thread.messages.length === 0 &&
   (!s.thread.isLoading || s.threads.isLoading);
 
+// 确认卡片已提交：对话到此结束，不再接受输入
+const isFinished = (s: AssistantState) =>
+  s.thread.messages.some((m) =>
+    m.content.some((p) => p.type === "tool-call" && p.result !== undefined),
+  );
+
 // A switched thread that is still fetching its history: skeleton, not welcome.
 const isHistoryLoadingView = (s: AssistantState) =>
   s.thread.messages.length === 0 &&
@@ -191,7 +199,8 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
   isEmpty,
   autoFocus,
 }) => {
-  const { Welcome = ThreadWelcome } = useContext(ThreadComponentsContext);
+  const { Welcome = ThreadWelcome, Finished = ThreadFinished } =
+    useContext(ThreadComponentsContext);
 
   return (
     <ThreadPrimitive.Root
@@ -241,8 +250,13 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
             )}
           >
             <ThreadScrollToBottom />
-            <ThreadFollowupSuggestions />
-            <Composer autoFocus={autoFocus} />
+            <AuiIf condition={isFinished}>
+              <Finished />
+            </AuiIf>
+            <AuiIf condition={(s) => !isFinished(s)}>
+              <ThreadFollowupSuggestions />
+              <Composer autoFocus={autoFocus} />
+            </AuiIf>
             <AuiIf condition={(s) => isNewChatView(s) && s.composer.isEmpty}>
               <ThreadSuggestions />
             </AuiIf>
@@ -252,6 +266,12 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
     </ThreadPrimitive.Root>
   );
 };
+
+const ThreadFinished: FC = () => (
+  <p className="text-muted-foreground py-2 text-center text-sm">
+    这段对话已经完成。
+  </p>
+);
 
 const ThreadMessage: FC = () => {
   const { AssistantMessage: AssistantMessageComponent = AssistantMessage } =

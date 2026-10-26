@@ -1,7 +1,8 @@
+import { MenuIcon } from "lucide-react"
 import { createContext, useContext, type ReactNode } from "react"
 
 import { Button } from "@/components/ui/button"
-import type { Decision, Settings } from "@/lib/api"
+import type { Decision, ProductSummary, Settings } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 export const SettingsContext = createContext<{ settings: Settings; reload: () => Promise<void> } | null>(null)
@@ -10,6 +11,33 @@ export function useSettings() {
   const ctx = useContext(SettingsContext)
   if (!ctx) throw new Error("SettingsContext missing")
   return ctx
+}
+
+/** 应用外壳：侧边栏里的产品列表，以及窄屏下侧边栏的开关。 */
+export const ShellContext = createContext<{
+  products: ProductSummary[] | null
+  reloadProducts: () => Promise<void>
+  openSidebar: () => void
+} | null>(null)
+
+export function useShell() {
+  const ctx = useContext(ShellContext)
+  if (!ctx) throw new Error("ShellContext missing")
+  return ctx
+}
+
+/** 每页顶部的窄工具栏：左边标题，右边操作。窄屏时最左边是打开侧边栏的按钮。 */
+export function TopBar({ title, actions }: { title: ReactNode; actions?: ReactNode }) {
+  const { openSidebar } = useShell()
+  return (
+    <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3 sm:px-4">
+      <Button variant="ghost" size="icon-sm" className="-ms-1 md:hidden" onClick={openSidebar} aria-label="打开菜单">
+        <MenuIcon />
+      </Button>
+      <div className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium">{title}</div>
+      {actions && <div className="flex shrink-0 items-center gap-1.5">{actions}</div>}
+    </header>
+  )
 }
 
 /** 小号等宽标签，assistant-ui 风格的分节标题。 */
@@ -21,25 +49,16 @@ export function Eyebrow({ children, className }: { children: ReactNode; classNam
   )
 }
 
-export function PageHeader({
-  crumb,
-  title,
-  sub,
-  actions,
-}: {
-  crumb?: ReactNode
-  title: ReactNode
-  sub?: ReactNode
-  actions?: ReactNode
-}) {
+/** 页面骨架：一页占满主区域的高度，顶栏固定，下面的内容自己决定怎么滚动。 */
+export function Screen({ children }: { children: ReactNode }) {
+  return <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+}
+
+/** 可滚动的内容区。 */
+export function ScrollBody({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-      <div className="min-w-0">
-        {crumb && <div className="mb-2 text-sm text-muted-foreground">{crumb}</div>}
-        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
-        {sub && <p className="mt-2 max-w-2xl text-muted-foreground">{sub}</p>}
-      </div>
-      {actions && <div className="flex gap-2">{actions}</div>}
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className={cn("mx-auto w-full max-w-5xl px-4 py-6 sm:px-6", className)}>{children}</div>
     </div>
   )
 }
@@ -58,7 +77,7 @@ export function Callout({
   return (
     <div
       className={cn(
-        "mb-6 rounded-lg border px-4 py-3",
+        "mb-5 rounded-lg border px-4 py-3",
         tone === "warn" && "border-warn/30 bg-warn-soft",
         tone === "bad" && "border-destructive/30 bg-destructive/8",
         tone === "info" && "bg-muted",

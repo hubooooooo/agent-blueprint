@@ -2,11 +2,10 @@ import { useAssistantDataUI, useAuiState, type DataMessagePartProps } from "@ass
 import { ArrowRightIcon, CheckIcon, HandIcon, ShieldAlertIcon, WrenchIcon, XIcon } from "lucide-react"
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 
-import { Thread } from "@/components/assistant-ui/elements/thread.aui"
+import { ChatPane } from "@/components/chat/chat-pane"
 import { ChatProvider } from "@/components/chat/chat-runtime"
 import { clearChatsExcept } from "@/components/chat/chat-storage"
-import { RestartButton } from "@/components/chat/restart-button"
-import { Callout, ModeCallouts, useSettings } from "@/components/common"
+import { Callout, ModeCallouts, ScrollBody, useSettings } from "@/components/common"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { api, chatEndpoints, type PlayIntro, type PlayStep, type ProductDetail } from "@/lib/api"
@@ -177,7 +176,7 @@ function NotesBar({ slug }: { slug: string }) {
     location.hash = productHref(slug, "revise")
   }
   return (
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-2 text-sm">
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b bg-ask-soft/60 px-4 py-1.5 text-sm">
       <span>
         试玩中记下了 <span className="font-mono">{notes.length}</span> 处不对
       </span>
@@ -232,8 +231,8 @@ export function PlayTab({ product }: { product: ProductDetail }) {
     if (storageKey) clearChatsExcept(prefix, storageKey)
   }, [prefix, storageKey])
 
-  if (!settings.configured) return <ModeCallouts />
-  if (error) return <Callout tone="bad" title="试玩没能开始">{error}</Callout>
+  if (!settings.configured) return <ScrollBody className="max-w-3xl"><ModeCallouts /></ScrollBody>
+  if (error) return <ScrollBody className="max-w-3xl"><Callout tone="bad" title="试玩没能开始">{error}</Callout></ScrollBody>
   if (!intro) return <p className="py-10 text-center text-sm text-muted-foreground">正在准备试玩…</p>
 
   return (
@@ -247,18 +246,11 @@ export function PlayTab({ product }: { product: ProductDetail }) {
         initialChips={intro.scenarios}
       >
         <PlayRenderers />
-        <div className="mx-auto max-w-[46rem]">
-          <NotesBar slug={slug} />
-          <div className="mb-2 flex min-h-8 items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground">
-              这是按方案模拟的，不是做出来的产品：工具结果都是编的，真正的产品要开发者按交接包来做。
-            </p>
-            <RestartButton />
-          </div>
-          <div className="h-[calc(100svh-24rem)] min-h-[26rem] overflow-hidden rounded-lg border bg-background">
-            <Thread autoFocus={false} placeholder={`以「${intro.role}」的身份说点什么…`} />
-          </div>
-        </div>
+        <ChatPane
+          hint="这是按方案模拟的，不是做出来的产品：工具结果都是编的，真正的产品要开发者按交接包来做。"
+          top={<NotesBar slug={slug} />}
+          placeholder={`以「${intro.role}」的身份说点什么…`}
+        />
       </ChatProvider>
     </NotesContext.Provider>
   )

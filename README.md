@@ -93,7 +93,7 @@ flowchart LR
 
 <table>
 <tr>
-<td width="50%"><img src="docs/images/web-overview.png" alt="产品页概览：产品定位、组件数量和待确认问题"></td>
+<td width="50%"><img src="docs/images/web-overview.png" alt="产品页概览：左侧产品列表和分区导航，中间是产品定位和待确认问题，右侧是组件数量和导出交接包"></td>
 <td width="50%"><img src="docs/images/web-answers.png" alt="回答问题：对话里一题一题答，拿不准可以点「帮我想想」"></td>
 </tr>
 <tr>

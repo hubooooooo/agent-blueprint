@@ -85,8 +85,9 @@ class App:
         job = self.jobs.latest_for(slug)
         detail = product_detail(ws)
         questions = detail["plan"]["unknowns"] if detail["plan"] else []
+        key = sum(1 for q in detail["plan"]["questions"] if q.get("priority") == 1) if detail["plan"] else 0
         return {**detail, "job": job.to_dict() if job else None,
-                "answer_intro": chat.answer_intro(questions) if questions else ""}
+                "answer_intro": chat.answer_intro(questions, key) if questions else ""}
 
     # -- 对话 ----------------------------------------------------------------
 
@@ -154,6 +155,7 @@ class App:
                                  resume=True, log=log)
             log_plan(ws, plan, doc)
             rewrite_plain(ws, runner, log)
+            fill_prd_sections(ws, runner, log)
             log("✓ 方案已生成")
 
         return self.jobs.start("plan", slug, task)
@@ -184,6 +186,7 @@ class App:
             runner = self.make_runner()
             result = revise_workspace(ws, text, runner, log=log, warn_undigested=False, source="网页界面·加新需求")
             rewrite_plain(ws, runner, log)
+            fill_prd_sections(ws, runner, log)
             log(f"✓ 已升到 V{result['new_version']}，方案已重新推导")
             return {"old_version": result["old_version"], "new_version": result["new_version"],
                     "diff": [{"id": cid, "name": COMPONENT_BY_ID[cid].name if cid in COMPONENT_BY_ID else cid,
@@ -233,6 +236,15 @@ def rewrite_plain(ws: Path, runner, log) -> None:
         rewrite_questions(json.loads((ws / "plan.json").read_text(encoding="utf-8")), runner, ws, log=log)
     except Exception as exc:  # noqa: BLE001
         log(f"  ⚠ 问题改写没成功，先显示原问题：{friendly_error(exc)}")
+
+
+def fill_prd_sections(ws: Path, runner, log) -> None:
+    """把 PRD 第 2–5 节整理出来（只动模板和之前自动整理过的小节）。失败不影响方案。"""
+    try:
+        from blueprint.prd_fill import fill_prd
+        fill_prd(ws, json.loads((ws / "plan.json").read_text(encoding="utf-8")), runner, log=log)
+    except Exception as exc:  # noqa: BLE001
+        log(f"  ⚠ 需求文档没整理成功，不影响方案：{friendly_error(exc)}")
 
 
 def read_key(env_path: Path) -> str:

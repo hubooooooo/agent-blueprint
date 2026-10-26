@@ -38,6 +38,13 @@ function describe(line: string, names: Record<string, string>): ReactNode {
     return /^(一句话想法|要加什么或改什么)$/.test(text) ? null : <p className="font-medium">{text}</p>
   }
   if (line.startsWith("选型变化：无")) return <p className="text-muted-foreground">组件选型没有变化</p>
+  if ((m = line.match(/^重新判断：(.+)；其余沿用 (V\d+) 的判断$/))) {
+    return (
+      <p className="text-muted-foreground">
+        {m[1] === "无" ? "新需求没涉及已有组件的判断" : `这次只重新判断了：${m[1]}`}；其余沿用 {m[2]} 的判断，避免和新需求无关的选型跟着变。
+      </p>
+    )
+  }
   if ((m = line.match(/^选型变化：(.+)$/))) {
     const changes = m[1].split("；").map((c) => c.trim().match(/^(s\d\d) (\S+) → (\S+)$/)).filter(Boolean) as RegExpMatchArray[]
     return (

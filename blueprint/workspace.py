@@ -33,6 +33,17 @@ SKELETON_DIR = "skeleton"
 HISTORY_DIR = "prd"
 VERIFY_DIR = "verify"
 PENDING_HEADING = "## 7. 新增需求（待消化）"
+# 网页界面自动整理的小节（PRD 第 2–5 节，见 blueprint/prd_fill.py）带这个标记。它们是给人和交接包看的产物，
+# 不是推导的输入：推导前会被 strip_auto_sections 去掉，否则里面的「待确认」会被再拆成新问题，越滚越多。
+AUTO_MARK = "<!-- agent-blueprint:auto -->"
+
+
+def strip_auto_sections(prd_text: str) -> str:
+    """去掉带 AUTO_MARK 的小节正文，只留标题。没有标记时原样返回。"""
+    if AUTO_MARK not in prd_text:
+        return prd_text
+    parts = re.split(r"(?m)^(?=## )", prd_text)
+    return "".join(p.split("\n", 1)[0] + "\n\n" if AUTO_MARK in p else p for p in parts)
 
 
 def slugify(text: str) -> str:
@@ -295,7 +306,8 @@ def log_plan(out_dir: Path, plan, doc: Path) -> None:
 # revise / verify
 # ---------------------------------------------------------------------------
 
-def quick_reselect(prd_text: str, runner, ws: Path, log: Callable[[str], None] = print) -> tuple[dict, list[dict]]:
+def quick_reselect(prd_text: str, runner, ws: Path, log: Callable[[str], None] = print,
+                   feature_overrides: dict[str, dict] | None = None) -> tuple[dict, list[dict]]:
     """只跑需求拆解 + 规则选型，不做架构设计与审稿。
 
     与 run_plan 用同一份 context 与提示词，所以结果进缓存后，之后的 `plan --resume` 会直接沿用需求拆解。
@@ -306,11 +318,14 @@ def quick_reselect(prd_text: str, runner, ws: Path, log: Callable[[str], None] =
     from blueprint.pipeline import StageRunner
     from blueprint.rules import select_components
     from blueprint.schema import EXTRACT_SCHEMA
+    prd_text = strip_auto_sections(prd_text)        # 与 run_plan 同口径，缓存才能互通
     stages = StageRunner(runner, ws, resume=True, log=log, context={"kind": "plan", "input": prd_text})
     stages.save("input.md", prd_text)
     extract = stages.run("extract", load_prompt("extract").format(
         fact_keys=_fmt_fact_keys(), features=_fmt_features(),
         questions=_fmt_questions(), input=prd_text), EXTRACT_SCHEMA, "① 需求拆解（快速模式）")
+    if feature_overrides:
+        extract = {**extract, "features": {**extract.get("features", {}), **feature_overrides}}
     log("  ▶ ③ 组件选型（规则，快速模式）")
     decisions = [d.to_dict() for d in select_components(extract.get("features", {}))]
     stages.save_json("stages/select.json", {"components": decisions})
@@ -319,7 +334,7 @@ def quick_reselect(prd_text: str, runner, ws: Path, log: Callable[[str], None] =
 
 def revise_workspace(ws: Path, requirement: str, runner=None, run_plan_flag: bool = True,
                      log: Callable[[str], None] = print, quick: bool = False,
-                     warn_undigested: bool = True, source: str = "验证后的新需求") -> dict:
+                     warn_undigested: bool = True, source: str = "验证后的新需求", stabilize: bool = True) -> dict:
     """warn_undigested=False 用于网页界面：那里的用户没有 AI 编程工具去「消化」新需求，
     新需求留在 PRD 第 7 节、由推导直接读取，就不在迭代记录里反复提醒。"""
     ws = Path(ws)
@@ -338,10 +353,18 @@ def revise_workspace(ws: Path, requirement: str, runner=None, run_plan_flag: boo
         warn = f"⚠️ 上一轮的新需求还没消化：{'、'.join(undigested)} 仍留在「{PENDING_HEADING[3:]}」。先让 AI 把它们合并进 PRD 各节并更新 skeleton/，再继续叠加。"
         log(warn)
         lines.append(warn)
+    overrides: dict[str, dict] = {}
+    if run_plan_flag and runner is not None and stabilize and before:
+        from blueprint.knowledge import COMPONENT_BY_ID, FEATURE_BY_ID
+        from blueprint.stability import stable_overrides
+        overrides, affected = stable_overrides(requirement, ws, runner, old, log=log)
+        touched = sorted({FEATURE_BY_ID[f].component for f in affected})
+        lines.append("重新判断：" + ("、".join(f"{c} {COMPONENT_BY_ID[c].name}" for c in touched) if touched else "无")
+                     + f"；其余沿用 V{old} 的判断")
     if run_plan_flag and quick:
         if runner is None:
             raise ValueError("快速重选需要 runner；或加 --no-plan 只升版 PRD")
-        extract, decisions = quick_reselect(prd_text, runner, ws, log=log)
+        extract, decisions = quick_reselect(prd_text, runner, ws, log=log, feature_overrides=overrides)
         after = {c["id"]: c["decision"] for c in decisions}
         diff = component_diff(before, after)
         result.update(diff=diff, unknowns=len(extract.get("unknowns", [])))
@@ -359,7 +382,7 @@ def revise_workspace(ws: Path, requirement: str, runner=None, run_plan_flag: boo
         if runner is None:
             raise ValueError("重推方案需要 runner；或加 --no-plan 只升版 PRD")
         from blueprint.forward import run_plan
-        plan, doc = run_plan(prd_text, runner, ws, resume=True, log=log)
+        plan, doc = run_plan(prd_text, runner, ws, resume=True, log=log, feature_overrides=overrides)
         after = {c["id"]: c["decision"] for c in plan.components}
         diff = component_diff(before, after)
         result.update(diff=diff, unknowns=len(plan.extract.get("unknowns", [])), doc=doc)

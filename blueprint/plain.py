@@ -48,6 +48,7 @@ PLAIN_SCHEMA = {
                     "plain": {"type": "string"},
                     "audience": {"type": "string", "enum": ["user", "dev"]},
                     "duplicate_of": {"type": "integer"},
+                    "priority": {"type": "integer"},
                 },
             },
         }
@@ -69,7 +70,7 @@ def component_questions(plan: dict) -> list[dict]:
         original = f"【组件 {c['id']} {c['name']}】{feat.question if feat else c.get('feature', '')}"
         plain = FEATURE_PLAIN.get(c.get("feature", ""), original)
         out.append({"text": f"{plain}（关系到组件 {c['id']} {c['name']}）", "original": original,
-                    "audience": "user", "component": c["id"]})
+                    "audience": "user", "component": c["id"], "priority": 2})
     return out
 
 
@@ -87,7 +88,9 @@ def load_rewrites(ws: Path) -> dict[str, dict]:
         i = item.get("index")
         if isinstance(i, int) and 0 <= i < len(questions) and str(item.get("plain", "")).strip():
             dup = item.get("duplicate_of")
+            pr = item.get("priority")
             out[questions[i]] = {"plain": str(item["plain"]).strip(), "audience": item.get("audience", "user"),
+                                 "priority": pr if pr in (1, 2, 3) else 2,
                                  # 只认指向前面的编号，记原文：问题列表变了也不会错并
                                  "duplicate_of": questions[dup] if isinstance(dup, int) and 0 <= dup < i else None}
     return out
@@ -108,10 +111,11 @@ def plain_questions(plan: dict, ws: Path | None = None) -> tuple[list[dict], lis
         if target in present and target in by_original:
             by_original[target].setdefault("merged", []).append(q)
             continue
-        item = {"text": r["plain"] if r else q, "original": q}
+        item = {"text": r["plain"] if r else q, "original": q, "priority": r["priority"] if r else 2}
         by_original[q] = item
         (devs if r and r["audience"] == "dev" else users).append(item)
     users += component_questions(plan)
+    users.sort(key=lambda q: q["priority"])          # 稳定排序：同一级保持原来的先后
     return users, devs
 
 
@@ -125,8 +129,8 @@ def rewrite_questions(plan: dict, runner, ws: Path, log: Callable[[str], None] =
     if not questions:
         atomic_write(result, json.dumps({"items": []}))
     elif getattr(runner, "name", "") == "mock":
-        items = [{"index": i, "plain": q, "audience": "dev" if _looks_technical(q) else "user"}
-                 for i, q in enumerate(questions)]
+        items = [{"index": i, "plain": q, "audience": "dev" if _looks_technical(q) else "user",
+                  "priority": 1 if i < 3 else 2} for i, q in enumerate(questions)]
         atomic_write(result, json.dumps({"items": items}, ensure_ascii=False, indent=2))
     else:
         numbered = "\n".join(f"{i}. {q}" for i, q in enumerate(questions))

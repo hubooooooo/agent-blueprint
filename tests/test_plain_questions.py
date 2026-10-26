@@ -57,7 +57,7 @@ def test_stale_rewrites_never_attach_to_new_questions(tmp_path):
     rewrite_questions(PLAN, MockRunner(), tmp_path, log=lambda _m: None)
     changed = {**PLAN, "unknowns": ["一个全新的问题？"], "design": {"open_questions": []}}
     users, devs = plain_questions(changed, tmp_path)
-    assert users[0] == {"text": "一个全新的问题？", "original": "一个全新的问题？"} and devs == []
+    assert (users[0]["text"], users[0]["original"]) == ("一个全新的问题？", "一个全新的问题？") and devs == []
 
 
 def test_failed_rewrite_keeps_previous_pair_consistent(tmp_path):
@@ -75,7 +75,7 @@ def test_failed_rewrite_keeps_previous_pair_consistent(tmp_path):
     except RuntimeError:
         pass
     users, devs = plain_questions(changed, tmp_path)
-    assert users[0]["text"] == "新问题 A？"                     # 新问题没有改写，就用原文
+    assert next(q for q in users if q["original"] == "新问题 A？")["text"] == "新问题 A？"   # 新问题没有改写，就用原文
     assert [q["original"] for q in devs] == PLAN["design"]["open_questions"]   # 旧的配对仍按原文匹配，没错位
 
 
@@ -111,3 +111,17 @@ def test_bad_duplicate_pointers_are_ignored(tmp_path):
     plan2 = {"unknowns": ["乙？"], "design": {}, "components": []}
     _write(tmp_path, qs, [{"index": 1, "plain": "乙", "audience": "user", "duplicate_of": 0}])
     assert [q["text"] for q in plain_questions(plan2, tmp_path)[0]] == ["乙"]
+
+
+def test_key_questions_come_first_and_keep_order_within_a_level(tmp_path):
+    qs = ["细节甲？", "关键乙？", "普通丙？", "关键丁？"]
+    plan = {"unknowns": qs, "design": {}, "components": [
+        {"id": "s12", "name": "定时调度", "decision": "待确认", "feature": "scheduled"}]}
+    _write(tmp_path, qs, [
+        {"index": 0, "plain": "甲", "audience": "user", "priority": 3},
+        {"index": 1, "plain": "乙", "audience": "user", "priority": 1},
+        {"index": 2, "plain": "丙", "audience": "user"},              # 没给就当 2
+        {"index": 3, "plain": "丁", "audience": "user", "priority": 1},
+    ])
+    users, _ = plain_questions(plan, tmp_path)
+    assert [q["text"][:1] for q in users] == ["乙", "丁", "丙", "需", "甲"]     # 组件问题是 2，排在丙后面

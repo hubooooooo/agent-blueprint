@@ -1,5 +1,5 @@
 import { ArrowRightIcon, CopyIcon, DownloadIcon } from "lucide-react"
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { toast } from "sonner"
 
 import { Chip, DECISIONS, Eyebrow } from "@/components/common"
@@ -103,6 +103,40 @@ function NextStep({ plan, slug }: { plan: Plan; slug: string }) {
   )
 }
 
+const SHOW_FIRST = 8
+
+/** 关键问题（priority 1）排在最前、带标签；超过 8 个时其余的折起来，免得一眼看过去吓人。 */
+function QuestionList({ questions }: { questions: Question[] }) {
+  const [all, setAll] = useState(false)
+  const shown = all ? questions : questions.slice(0, SHOW_FIRST)
+  const key = questions.filter((q) => q.priority === 1).length
+  return (
+    <>
+      {key > 0 && (
+        <p className="mb-2 text-sm">
+          其中 <span className="font-medium">{key} 个关键问题</span> 排在最前面：不回答就没法动手，或者会让方案大改。
+        </p>
+      )}
+      <ol>
+        {shown.map((q, i) => (
+          <li key={i} className="flex gap-4 border-t py-3 first:border-t-0">
+            <span className="pt-0.5 font-mono text-xs text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
+            <span className="min-w-0 flex-1">
+              {q.priority === 1 && <Chip tone="ink" className="me-2 align-[1px]">关键</Chip>}
+              <QuestionText q={q} />
+            </span>
+          </li>
+        ))}
+      </ol>
+      {questions.length > SHOW_FIRST && (
+        <Button variant="ghost" size="sm" className="mt-1 text-muted-foreground" onClick={() => setAll(!all)}>
+          {all ? "收起" : `还有 ${questions.length - SHOW_FIRST} 个问题，展开`}
+        </Button>
+      )}
+    </>
+  )
+}
+
 // ---------------------------------------------------------------------------
 
 export function OverviewTab({ plan, slug, onAnswer }: { plan: Plan; slug: string; onAnswer: () => void }) {
@@ -136,14 +170,7 @@ export function OverviewTab({ plan, slug, onAnswer }: { plan: Plan; slug: string
             <p className="-mt-2 mb-4 text-sm text-muted-foreground">
               答不上来的就是风险点。点「开始回答」在对话里一题一题过，拿不准的可以让 AI 给你几个方向；答完自动重新推导。
             </p>
-            <ol>
-              {plan.questions.map((q, i) => (
-                <li key={i} className="flex gap-4 border-t py-3 first:border-t-0">
-                  <span className="pt-0.5 font-mono text-xs text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
-                  <QuestionText q={q} />
-                </li>
-              ))}
-            </ol>
+            <QuestionList questions={plan.questions} />
           </>
         ) : (
           <p className="text-muted-foreground">没有需要你回答的问题了。</p>

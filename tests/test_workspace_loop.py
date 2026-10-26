@@ -200,3 +200,33 @@ def test_log_uses_first_sentence_not_markdown_heading(tmp_path):
     ws = init_workspace(tmp_path, "烘焙助手", "### 一句话想法\n\n- 在微信上帮社区烘焙店回答顾客问题\n\n### 给谁用")
     log = (ws / "迭代记录.md").read_text(encoding="utf-8")
     assert "原始需求：在微信上帮社区烘焙店回答顾客问题" in log
+
+
+def test_revise_keeps_untouched_features_from_previous_version(tmp_path):
+    from blueprint.forward import run_plan
+    ws = _init(tmp_path, "一个帮我整理邮件的助手，涉及隐私")
+    run_plan((ws / "PRD.md").read_text(encoding="utf-8"), MockRunner(), ws, log=quiet)
+    # 假装上一版模型对「外部生态」判了 yes：新需求只谈定时，它不该被重新判断
+    plan = json.loads((ws / "plan.json").read_text(encoding="utf-8"))
+    plan["features"]["external_ecosystem"] = {"value": "yes", "evidence": "要接日历"}
+    for c in plan["components"]:
+        if c["id"] == "s14":
+            c["decision"] = "必选"
+    (ws / "plan.json").write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+
+    result = revise_workspace(ws, "每天早上 8 点自动跑一遍", MockRunner(), log=quiet)
+    after = json.loads((ws / "plan.json").read_text(encoding="utf-8"))
+    kept = after["features"]["external_ecosystem"]
+    assert kept["value"] == "yes" and kept["evidence"].startswith("沿用 V1 的判断")
+    assert after["features"]["scheduled"]["value"] == "yes"                     # 新需求涉及的照常重新判断
+    assert not any(cid == "s14" for cid, _a, _b in result["diff"])
+    log = (ws / "迭代记录.md").read_text(encoding="utf-8")
+    assert "重新判断：s12 定时调度；其余沿用 V1 的判断" in log
+
+
+def test_revise_can_turn_stabilizing_off(tmp_path):
+    from blueprint.forward import run_plan
+    ws = _init(tmp_path, "一个帮我整理邮件的助手")
+    run_plan((ws / "PRD.md").read_text(encoding="utf-8"), MockRunner(), ws, log=quiet)
+    revise_workspace(ws, "每天早上 8 点自动跑一遍", MockRunner(), log=quiet, stabilize=False)
+    assert "重新判断：" not in (ws / "迭代记录.md").read_text(encoding="utf-8")

@@ -382,3 +382,26 @@ def test_revise_rejects_empty_requirement(app):
     wait_job(app.jobs.get(app.create_product({"name": "邮件助手", "idea": "整理邮件"})["job"]["id"]))
     with pytest.raises(ValueError, match="不能为空"):
         app.start_revise("邮件助手", {"title": "x", "requirement": "  "})
+
+
+def test_play_over_http_streams_simulated_steps(server, app):
+    _, base = server
+    wait_job(app.jobs.get(app.create_product({"name": "玩具剧场", "idea": IDEA})["job"]["id"]))
+    url = base + "/api/products/" + urllib.request.quote("玩具剧场")
+    status, body, _ = call(url + "/play-intro", {})
+    intro = json.loads(body)
+    assert status == 200 and intro["scenarios"] and intro["role"] in intro["text"]
+
+    status, body, _ = call(url + "/play", {"messages": [{"role": "assistant", "text": intro["text"]},
+                                                        {"role": "user", "text": "你好"}]})
+    events = [json.loads(line) for line in body.decode().splitlines()]
+    assert status == 200 and events[-1] == {"type": "done"}
+    assert any(e["type"] == "data" and e["name"] == "play_feedback" for e in events)
+
+
+def test_play_without_plan_is_a_plain_400(server, app):
+    _, base = server
+    from blueprint.workspace import init_workspace
+    init_workspace(app.out_root, "空产品", "一句话")
+    status, body, _ = call(base + "/api/products/" + urllib.request.quote("空产品") + "/play-intro", {})
+    assert status == 400 and "先生成方案" in json.loads(body)["error"]

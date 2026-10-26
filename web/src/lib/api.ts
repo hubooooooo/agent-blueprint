@@ -70,7 +70,7 @@ export type Tool = {
 }
 
 /** 待确认问题：text 是给人看的大白话版本，original 是方案里的原问题（见 blueprint/plain.py）。 */
-export type Question = { text: string; original: string; component?: string }
+export type Question = { text: string; original: string; component?: string; priority?: number; merged?: string[] }
 
 export type Plan = {
   title: string

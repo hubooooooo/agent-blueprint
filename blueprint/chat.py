@@ -133,9 +133,22 @@ class MockChat:
         said = [line[3:] for line in prompt.splitlines() if line.startswith("用户：")]
         if stage == "chat_revise":
             return {"title": (said[0] if said else "新需求")[:20], "requirement": "\n\n".join(said) or "（未提及）"}
+        if stage == "chat_play_intro":
+            return {"role": "这个产品的使用者", "scenarios": ["你好，你能帮我做什么？", "能不能便宜一点？"]}
+        if stage == "chat_play":
+            return self._play(said[-1] if said else "", prompt)
         name = re.split(r"[，。,.!！?？\s]", said[0] if said else "")[0][:12] or "未命名产品"
         idea = "\n\n".join(said) or "（未提及）"
         return {"name": name, "idea": idea}
+
+    @staticmethod
+    def _play(last: str, prompt: str) -> dict:
+        if re.search(r"折|便宜|优惠|改价|退款", last):
+            return {"steps": [{"kind": "blocked", "rule": "价格类承诺不能自己答应（离线演示）"}],
+                    "reply": "这个我做不了主，帮您转给店主看看。"}
+        tool = re.search(r'"name": "([^"]+)"', prompt)
+        steps = [{"kind": "tool", "tool": tool.group(1), "input": last[:30], "result": "（离线演示的模拟结果）"}] if tool else []
+        return {"steps": steps, "reply": f"（离线演示）收到：「{last[:30]}」。真实模型会按方案里的提示词回答。"}
 
 
 # ---------------------------------------------------------------------------

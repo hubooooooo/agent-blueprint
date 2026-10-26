@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from blueprint import chat, providers
+from blueprint import chat, playground, providers
 from blueprint.usage import record_usage
 from blueprint.web.jobs import JobManager, friendly_error
 from blueprint.web.views import list_products, product_detail, resolve_workspace
@@ -109,6 +109,33 @@ class App:
         model = self.chat_model()
         return metered(ws, model, chat.answer_events(plan["unknowns"], chat.parse_messages(body.get("messages")),
                                                      (ws / "PRD.md").read_text(encoding="utf-8"), model))
+
+    def _plan_for_play(self, slug: str) -> tuple[Path, dict]:
+        ws = resolve_workspace(self.out_root, slug)
+        plan_path = ws / "plan.json"
+        if not plan_path.is_file():
+            raise ValueError("还没有方案，先生成方案再试玩。")
+        return ws, json.loads(plan_path.read_text(encoding="utf-8"))
+
+    def play_intro(self, slug: str) -> dict:
+        """试玩开场：你扮演谁、可以先说什么。按方案指纹缓存，方案没变不再调模型。"""
+        ws, plan = self._plan_for_play(slug)
+        model = self.chat_model()
+        try:
+            intro = playground.play_intro(plan, ws, model)
+        except ValueError:
+            raise
+        except Exception as exc:  # noqa: BLE001 —— 模型报错（Key 失效、网络）转成大白话，接口返回 400
+            raise ValueError(friendly_error(exc)) from exc
+        finally:
+            record_usage(ws, "chat", getattr(getattr(model, "runner", None), "budget", None))
+        return {**intro, "text": playground.intro_text(intro["role"])}
+
+    def play_chat(self, slug: str, body: dict):
+        ws, plan = self._plan_for_play(slug)
+        model = self.chat_model()
+        return metered(ws, model, playground.play_events(plan, chat.parse_messages(body.get("messages")),
+                                                         (ws / "PRD.md").read_text(encoding="utf-8"), model))
 
     def save_answers(self, slug: str, body: dict) -> dict:
         from blueprint.workspace import record_answers
@@ -417,7 +444,7 @@ def make_handler(app: App):
                     return self._json(app.create_product(body), 201)
                 if path == "/api/chat/intake":
                     return self._stream(app.intake_chat(body))
-                m = re.fullmatch(r"/api/products/([^/]+)/(plan|reveal|chat|answers|revise-chat|revise)", path)
+                m = re.fullmatch(r"/api/products/([^/]+)/(plan|reveal|chat|answers|revise-chat|revise|play|play-intro)", path)
                 if m:
                     slug, action = unquote(m.group(1)), m.group(2)
                     if action == "revise-chat":
@@ -430,6 +457,10 @@ def make_handler(app: App):
                         return self._stream(app.answer_chat(slug, body))
                     if action == "answers":
                         return self._json(app.save_answers(slug, body))
+                    if action == "play":
+                        return self._stream(app.play_chat(slug, body))
+                    if action == "play-intro":
+                        return self._json(app.play_intro(slug))
                     app.reveal(slug)
                     return self._json({"ok": True})
                 return self._error(404, "接口不存在")

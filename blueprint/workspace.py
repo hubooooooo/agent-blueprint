@@ -402,7 +402,7 @@ def revise_workspace(ws: Path, requirement: str, runner=None, run_plan_flag: boo
     return result
 
 
-def verify_workspace(ws: Path, runner, log: Callable[[str], None] = print):
+def verify_workspace(ws: Path, runner, log: Callable[[str], None] = print, fast: bool = False):
     ws = Path(ws)
     prd_text = read_prd(ws)
     skeleton = ws / SKELETON_DIR
@@ -411,7 +411,7 @@ def verify_workspace(ws: Path, runner, log: Callable[[str], None] = print):
     if not code_files:
         raise ValueError(f"{skeleton} 里还没有代码，先让 AI 按 方案.md 生成骨架再验证。")
     from blueprint.reverse import run_audit
-    audit, doc = run_audit(skeleton, runner, ws / VERIFY_DIR, prd_text=prd_text, resume=False, log=log)
+    audit, doc = run_audit(skeleton, runner, ws / VERIFY_DIR, prd_text=prd_text, resume=False, log=log, fast=fast)
     p0 = [f"{g.id} {g.name}" for g in audit.gaps if g.priority == "P0"]
     lines = [f"对照 PRD V{current_version(prd_text)} 检查 skeleton/：必选组件信号覆盖率 {int(audit.completion * 100)}%",
              f"报告：{doc}"]

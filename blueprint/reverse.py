@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from blueprint.agent import supports_agent
 from blueprint.forward import _fmt_fact_keys, _fmt_features, _fmt_questions, _dump
 from blueprint.knowledge import ACCEPTANCE, COMPONENT_BY_ID, FACT_KEYS, load_prompt
-from blueprint.llm import Runner
+from blueprint.llm import BudgetExceeded, Runner
 from blueprint.pipeline import StageRunner
 from blueprint.rules import select_components, describe_feature
 from blueprint.scanner import Inventory, scan_project
+from blueprint.audit_agent import MAX_TURNS, investigate
 from blueprint.schema import EXTRACT_SCHEMA, REVIEW_SCHEMA
 
 # 期望 × 现状 → 差距判定
@@ -65,6 +68,9 @@ class Audit:
     inventory_brief: dict
     runner: str = ""
     budget: dict = field(default_factory=dict)
+    mode: str = "fast"                 # agent：模型读代码核实；fast：关键词扫描
+    mode_note: str = ""                # 没用上 agent 的原因（--fast、模型不支持、agent 失败）
+    agent_stats: dict = field(default_factory=dict)
 
     @property
     def title(self) -> str:
@@ -85,19 +91,29 @@ class Audit:
             "inventory": self.inventory_brief,
             "runner": self.runner,
             "budget": self.budget,
+            "mode": self.mode,
+            "mode_note": self.mode_note,
+            "agent_stats": self.agent_stats,
         }
 
 
-def compare(decisions: list[dict], inventory: Inventory) -> tuple[list[Gap], float]:
+def compare(decisions: list[dict], inventory: Inventory,
+            findings: dict | None = None) -> tuple[list[Gap], float]:
+    """findings：agent 核实过的组件结论，优先于扫描器的关键词命中。"""
     gaps: list[Gap] = []
     score = 0.0
     total = 0
     for d in decisions:
+        finding = (findings or {}).get(d["id"])
         sig = inventory.components.get(d["id"])
-        present = sig.strength if sig else "none"
+        if finding:
+            present = finding["strength"]
+            evidence = [f"{e['file']}:{e['line']} {e['note']}" for e in finding["evidence"][:4]]
+        else:
+            present = sig.strength if sig else "none"
+            evidence = [f"{h.file}:{h.line} `{h.text}`" for h in (sig.hits[:4] if sig else [])]
         verdict, priority = _GAP_MATRIX[(d["decision"], present)]
         comp = COMPONENT_BY_ID[d["id"]]
-        evidence = [f"{h.file}:{h.line} `{h.text}`" for h in (sig.hits[:4] if sig else [])]
         gaps.append(Gap(d["id"], d["name"], d["decision"], present, verdict, priority,
                         d["reason"], evidence, comp.readme))
         if d["decision"] == "必选":
@@ -109,26 +125,34 @@ def compare(decisions: list[dict], inventory: Inventory) -> tuple[list[Gap], flo
     return gaps, completion
 
 
-def _elements_missing(intent: dict, inventory: Inventory) -> list[str]:
-    """五要素空位：从意图与扫描线索粗判。"""
+def _elements_missing(intent: dict, inventory: Inventory, findings: dict | None = None) -> list[str]:
+    """五要素空位：从意图与组件结论（agent 核实过的优先，否则用扫描线索）粗判。"""
     missing: list[str] = []
-    comps = inventory.components
-    if comps["s02"].strength == "none":
+
+    def strength(cid: str) -> str:
+        finding = (findings or {}).get(cid)
+        return finding["strength"] if finding else inventory.components[cid].strength
+
+    if strength("s02") == "none":
         missing.append("工具：没有扫描到任何工具定义（input_schema / tools=[...]）")
-    if comps["s07"].strength == "none" and not any("知识" in u or "knowledge" in u.lower()
+    if strength("s07") == "none" and not any("知识" in u or "knowledge" in u.lower()
                                                    for u in intent.get("unknowns", [])):
         missing.append("知识：没有扫描到知识库、技能或检索的痕迹，领域知识从哪来不明")
     if inventory.acceptance.get("observable", {}).get("status") == "fail":
         missing.append("观察：没有日志、指标或轨迹记录，无法确认动作产生了预期效果")
     if not inventory.llm_sdks:
         missing.append("行动：没有扫描到任何模型 SDK 调用，这个项目可能还不是 Agent")
-    if comps["s03"].strength == "none":
+    if strength("s03") == "none":
         missing.append("权限：没有权限检查、路径安全或审批的痕迹，默认全开")
     return missing
 
 
+AGENT_RESERVE_CALLS = 2        # agent 之后还要留给独立复核的调用次数
+
+
 def run_audit(project: Path, runner: Runner, out_dir: Path, prd_text: str | None = None,
-              resume: bool = False, log: Callable[[str], None] = print) -> tuple[Audit, Path]:
+              resume: bool = False, log: Callable[[str], None] = print, fast: bool = False) -> tuple[Audit, Path]:
+    """fast=True 或模型不支持工具调用时走关键词扫描；否则由 agent 读代码核实，失败自动退回扫描。"""
     project = Path(project).resolve()
     if not project.is_dir():
         raise FileNotFoundError(f"项目目录不存在：{project}")
@@ -138,45 +162,83 @@ def run_audit(project: Path, runner: Runner, out_dir: Path, prd_text: str | None
                          context={"kind": "audit", "inventory": inventory.to_dict(), "prd": prd_text})
     stages.save_json("inventory.json", inventory.to_dict())
 
-    intent = stages.run("infer", load_prompt("infer").format(
-        fact_keys=_fmt_fact_keys(), features=_fmt_features(),
-        readme=inventory.readme or "（没有 README）", tree=inventory.tree,
-        inventory_json=_dump(inventory.brief())), EXTRACT_SCHEMA, "② 反推项目意图")
-
     prd_extract = None
-    features = intent.get("features", {})
+    prd_decisions = None
     if prd_text:
         stages.save("prd.md", prd_text)
         prd_extract = stages.run("extract", load_prompt("extract").format(
             fact_keys=_fmt_fact_keys(), features=_fmt_features(),
-            questions=_fmt_questions(), input=prd_text), EXTRACT_SCHEMA, "②' 拆解对照 PRD")
-        features = prd_extract.get("features", {})
+            questions=_fmt_questions(), input=prd_text), EXTRACT_SCHEMA, "② 拆解对照的 PRD")
+        prd_decisions = [d.to_dict() for d in select_components(prd_extract.get("features", {}))]
 
-    log("  ▶ ③ 算出它应该有什么（规则）")
-    decisions = [d.to_dict() for d in select_components(features)]
+    intent, findings, agent_stats = None, None, {}
+    use_agent, mode_note = _agent_plan(runner, fast)
+    if use_agent:
+        log(f"  ▶ {'③' if prd_text else '②'} agent 读代码：反推项目意图、逐个核实组件")
+        try:
+            intent, findings, agent_stats = investigate(project, inventory, runner, Path(out_dir), prd_decisions,
+                                                        log=log, max_turns=_agent_turns(runner), resume=resume)
+        except BudgetExceeded:
+            raise
+        except Exception as exc:  # noqa: BLE001 —— agent 失败不能让用户卡住，退回扫描写法
+            mode_note = f"agent 未完成（{str(exc)[:160]}），已改用快速扫描"
+            log(f"  ⚠ {mode_note}")
+    if intent is None:
+        intent = stages.run("infer", load_prompt("infer").format(
+            fact_keys=_fmt_fact_keys(), features=_fmt_features(),
+            readme=inventory.readme or "（没有 README）", tree=inventory.tree,
+            inventory_json=_dump(inventory.brief())), EXTRACT_SCHEMA,
+            f"{'③' if prd_text else '②'} 反推项目意图（快速扫描）")
+
+    log(f"  ▶ {'④' if prd_text else '③'} 算出它应该有什么（规则），对照打分")
+    decisions = prd_decisions or [d.to_dict() for d in select_components(intent.get("features", {}))]
     stages.save_json("stages/select.json", {"components": decisions})
+    gaps, completion = compare(decisions, inventory, findings)
+    elements_missing = _elements_missing(intent, inventory, findings)
 
-    log("  ▶ ④ 对照打分")
-    gaps, completion = compare(decisions, inventory)
-    elements_missing = _elements_missing(intent, inventory)
-
+    if findings is not None:
+        evidence = {g.id: {"strength": g.present, "evidence": g.evidence[:5]} for g in gaps}
+    else:
+        evidence = {k: {"strength": v.strength, "hits": [f"{h.file}:{h.line}" for h in v.hits[:5]]}
+                    for k, v in inventory.components.items()}
     review = stages.run("audit_review", load_prompt("audit_review").format(
         intent_json=_dump({"title": intent.get("title"), "one_liner": intent.get("one_liner"),
                            "facts": intent.get("facts")}),
         gaps_json=_dump([g.to_dict() for g in gaps if g.priority in ("P0", "P1", "P2")]),
-        evidence_json=_dump({k: {"strength": v.strength, "hits": [f"{h.file}:{h.line}" for h in v.hits[:5]]}
-                             for k, v in inventory.components.items()})),
-        REVIEW_SCHEMA, "⑤ 独立复核")
+        evidence_json=_dump(evidence)),
+        REVIEW_SCHEMA, f"{'⑤' if prd_text else '④'} 独立复核")
 
     budget = getattr(runner, "budget", None)
     audit = Audit(root=str(project), intent=intent, prd_extract=prd_extract, components=decisions,
                   gaps=gaps, acceptance=inventory.acceptance, elements_missing=elements_missing,
                   completion=completion, review=review, inventory_brief=inventory.brief(),
-                  runner=getattr(runner, "name", ""), budget=budget.summary() if budget else {})
+                  runner=getattr(runner, "name", ""), budget=budget.summary() if budget else {},
+                  mode="agent" if findings is not None else "fast", mode_note=mode_note,
+                  agent_stats=agent_stats)
     stages.save_json("audit.json", audit.to_dict())
     stages.save("本该有的PRD.md", render_should_have_prd(audit))
     doc_path = stages.save("差距报告.md", render_audit(audit))
     return audit, doc_path
+
+
+def _agent_plan(runner: Runner, fast: bool) -> tuple[bool, str]:
+    """要不用 agent，以及不用时写进报告的原因（离线 mock 本来就没有 agent，不写原因）。"""
+    if fast:
+        return False, "按 --fast 使用快速扫描"
+    if os.getenv("BLUEPRINT_AGENT", "").strip().lower() in ("off", "0", "false"):
+        return False, "环境变量 BLUEPRINT_AGENT=off，使用快速扫描"
+    if not supports_agent(runner):
+        return False, "" if getattr(runner, "name", "") == "mock" else "当前模型接入方式不支持工具调用，使用快速扫描"
+    if _agent_turns(runner) < 4:
+        return False, "费用上限剩余的调用次数太少，使用快速扫描（可调大 --max-calls）"
+    return True, ""
+
+
+def _agent_turns(runner: Runner) -> int:
+    budget = getattr(runner, "budget", None)
+    if budget is None:
+        return MAX_TURNS
+    return min(MAX_TURNS, budget.max_calls - budget.calls - AGENT_RESERVE_CALLS)
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +272,13 @@ def render_audit(audit: Audit) -> str:
     w("")
     w(f"> 项目路径：`{audit.root}`")
     w(f"> 推导引擎：Agent Blueprint · 模型：{audit.runner}")
-    w("> 本报告基于静态扫描线索，未运行被检查项目；「信号覆盖率」只是静态扫描命中了多少必选组件的关键词信号，不是功能完成度，更不代表生产验收通过。")
+    if audit.mode == "agent":
+        w(f"> 本报告由 agent 阅读项目代码得出（读过或搜到 {audit.agent_stats.get('files_seen', 0)} 个文件），未运行被检查项目；"
+          "组件现状是 agent 核实代码后的判断，「信号覆盖率」按核实结果计算，不代表生产验收通过。")
+    else:
+        w("> 本报告基于静态扫描线索，未运行被检查项目；「信号覆盖率」只是静态扫描命中了多少必选组件的关键词信号，不是功能完成度，更不代表生产验收通过。")
+        if audit.mode_note:
+            w(f"> ⚠️ 本次是快速扫描模式：{audit.mode_note}。组件证据只是关键词命中，可能误报或漏报。")
     if audit.runner == "mock":
         w("> 离线演示：文字与审稿为占位结果，未进行真实模型语义判断。")
         w(">")

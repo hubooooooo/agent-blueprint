@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -21,6 +22,8 @@ PROMPT_FILES = sorted(p for p in (ROOT / "blueprint/knowledge/prompts").glob("*.
 EXAMPLES = ROOT / "docs/examples"
 PLAN_OUT = ROOT / "out/toy-theater-real"
 AUDIT_OUT = ROOT / "out/audit-minimal-bot-real"
+# 题目目录里有标准答案 expected.json，反向检查的 agent 会读文件，所以先复制一份去掉它再检查
+AUDIT_TARGET = ROOT / "out/minimal-bot"
 
 
 def prompts_fingerprint() -> str:
@@ -52,7 +55,10 @@ def main() -> None:
     py = sys.executable
     if not args.copy_only:
         subprocess.run([py, "-m", "blueprint", "plan", str(ROOT / "evals/forward/toy-theater/input.md"), "-o", str(PLAN_OUT)], cwd=ROOT, check=True)
-        subprocess.run([py, "-m", "blueprint", "audit", str(ROOT / "evals/reverse/minimal-bot"), "-o", str(AUDIT_OUT)], cwd=ROOT, check=True)
+        shutil.rmtree(AUDIT_TARGET, ignore_errors=True)
+        shutil.copytree(ROOT / "evals/reverse/minimal-bot", AUDIT_TARGET,
+                        ignore=shutil.ignore_patterns("expected.json", "__pycache__"))
+        subprocess.run([py, "-m", "blueprint", "audit", str(AUDIT_TARGET), "-o", str(AUDIT_OUT)], cwd=ROOT, check=True)
     fp = prompts_fingerprint()
     date = time.strftime("%Y-%m-%d")
     import os
@@ -65,7 +71,7 @@ def main() -> None:
            "> 审稿没有完全通过是正常的：独立审稿本来就该把方案里的矛盾挑出来，这些意见就是你下一轮要回答的问题。\n\n")
     _write(AUDIT_OUT / "差距报告.md", EXAMPLES / "差距报告示例-minimal-bot-真实运行.md",
            f"> ⚠️ 本文件是引擎**真实运行产物**，未经人工修改：模型 {model}，{date} 生成，提示词指纹 `prompts:{fp}`。\n"
-           f"> 被审计项目为 [evals/reverse/minimal-bot](../../evals/reverse/minimal-bot)，{_usage(AUDIT_OUT / 'audit.json')}。\n"
+           f"> 被审计项目为 [evals/reverse/minimal-bot](../../evals/reverse/minimal-bot)（去掉标准答案 expected.json 后的副本），{_usage(AUDIT_OUT / 'audit.json')}。\n"
            "> 复核有异议也是正常的：复核会质疑打分阶段的推测性结论，这正是两阶段设计的目的。\n\n")
     print("提示词指纹：", fp)
 

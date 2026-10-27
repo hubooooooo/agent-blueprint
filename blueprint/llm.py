@@ -144,12 +144,29 @@ class AnthropicRunner:
             raise ValueError("请在 .env 中填写有效的 ANTHROPIC_API_KEY，或使用 --mock 离线预览")
         self.model = model or os.getenv("MODEL_ID") or DEFAULT_MODEL
         self.budget = budget or Budget()
+        # 单次请求超时默认 120 秒；经中转的慢模型生成长输出会更久，可用环境变量 BLUEPRINT_TIMEOUT 调大。
         self.client = client or Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"),
-                                         timeout=120.0, max_retries=0)
+                                         timeout=float(os.getenv("BLUEPRINT_TIMEOUT", "120")), max_retries=0)
         # 带思考过程的模型（如 deepseek-v4）思考 token 也计入 max_tokens，长 PRD 时 16000 可能不够；
         # 可用环境变量 BLUEPRINT_MAX_OUTPUT_TOKENS 调大。
         self.max_tokens = max_tokens or int(os.getenv("BLUEPRINT_MAX_OUTPUT_TOKENS", "16000"))
         self.attempts: list[dict] = []      # 最近一次 complete() 的每次尝试：原文、stop_reason、错误，供排障落盘
+
+    def step(self, stage: str, system: str, messages: list[dict], tools: list[dict]) -> Any:
+        """agent 循环的一轮：带工具调用模型，原样返回响应。消息历史由 blueprint/agent.py 维护。"""
+        self.budget.check()
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            system=system,
+            messages=messages,
+            tools=tools,
+        )
+        usage = getattr(response, "usage", None)
+        self.budget.record(stage, getattr(usage, "input_tokens", 0) or 0, getattr(usage, "output_tokens", 0) or 0)
+        if getattr(response, "stop_reason", None) == "refusal":
+            raise StageOutputInvalid(f"模型拒绝了阶段 {stage} 的请求")
+        return response
 
     def complete(self, stage: str, system: str, prompt: str, schema: dict) -> dict:
         messages = [{"role": "user", "content": prompt}]

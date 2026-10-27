@@ -209,7 +209,7 @@ def make_check(files: ProjectFiles, required: Callable[[dict], list[str]]) -> Ca
                 errors.append(f"components.{cid}: 不是组件编号，应为 s01–s17")
         for cid in required(result):
             if cid not in findings:
-                errors.append(f"components.{cid}: 选型里它是必选/二期/待确认，必须给出结论")
+                errors.append(f"components.{cid}: 它是必选/二期/待确认，或扫描器判为有，必须给出结论")
         for cid, f in findings.items():
             if f["strength"] != "none" and not f["evidence"]:
                 errors.append(f"components.{cid}: 判 {f['strength']} 至少要有一条代码证据")
@@ -285,23 +285,27 @@ def investigate(project: Path, inventory: Inventory, runner, out_dir: Path, prd_
         except (OSError, ValueError, KeyError):
             pass
     files = ProjectFiles(project)
+    # 扫描器判为有 / 弱的组件也要 agent 确认或推翻，否则报告会沿用关键词误报
+    flagged = [cid for cid, sig in inventory.components.items() if sig.strength != "none"]
+    recheck = ("\n\n另外，扫描线索里 strength 不是 none 的组件也都要核实并交结论（确认或推翻扫描结果）："
+               + "、".join(flagged) + "。没交结论的组件一律按 none 处理。") if flagged else ""
     if prd_decisions is not None:
         wanted = [d["id"] for d in prd_decisions if d["decision"] != "放弃"]
 
         def required(_result: dict) -> list[str]:
-            return wanted
+            return sorted(set(wanted) | set(flagged))
 
         expected = "\n".join(f"- {d['id']} {d['name']}：{d['decision']}" for d in prd_decisions)
         selection = ("## 这个项目应有的组件（已按用户提供的 PRD 用规则算好，不用你再判断）\n"
                      f"{expected}\n\n必选、二期、待确认的组件都要核实；放弃的可以不交。")
     else:
         def required(result: dict) -> list[str]:
-            return expected_ids(coerce_stage_output("infer", result["intent"])["features"])
+            return sorted(set(expected_ids(coerce_stage_output("infer", result["intent"])["features"])) | set(flagged))
 
         selection = ("## 这个项目应有的组件\n先读代码判断 14 个特征，再调用 select_components 看规则算出的选型；"
                      "必选、二期、待确认的组件都要核实，放弃的可以不交。")
     prompt = load_prompt("audit_agent").format(
-        fact_keys=_fmt_fact_keys(), features=_fmt_features(), selection=selection,
+        fact_keys=_fmt_fact_keys(), features=_fmt_features(), selection=selection + recheck,
         readme=inventory.readme[:6000] or "（没有 README）", tree=inventory.tree,
         inventory_json=_dump(inventory.brief()), max_turns=max_turns)
     result = run_agent("audit_agent", SYSTEM, prompt, _tools(files, prd_decisions is None), RESULT_SCHEMA, runner,

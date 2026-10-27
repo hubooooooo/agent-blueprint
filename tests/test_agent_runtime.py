@@ -247,11 +247,18 @@ def _intent():
             "features": {f.id: {"value": "no", "evidence": ""} for f in FEATURES}, "unknowns": []}
 
 
-def _audit_script():
+def _flagged(project=MINIMAL_BOT):
+    from blueprint.scanner import scan_project
+    return [cid for cid, sig in scan_project(project).components.items() if sig.strength != "none"]
+
+
+def _audit_script(skip=()):
     finding = {"strength": "strong", "evidence": [{"file": "src/bot.py", "line": 16, "note": "while True 循环调用模型"}]}
     tools = {"strength": "weak", "evidence": [{"file": "src/bot.py", "line": 7, "note": "只有一个 bash 工具"}]}
+    components = {cid: {"strength": "none", "evidence": []} for cid in _flagged() if cid not in skip}
+    components.update({"s01": finding, "s02": tools})
     return [reply(use("list_dir", {"path": "."}), use("read_file", {"path": "src/bot.py"})),
-            reply(use("finish", {"intent": _intent(), "components": {"s01": finding, "s02": tools}}))]
+            reply(use("finish", {"intent": _intent(), "components": components}))]
 
 
 def test_run_audit_uses_agent_findings(tmp_path):
@@ -264,6 +271,26 @@ def test_run_audit_uses_agent_findings(tmp_path):
     report = doc.read_text(encoding="utf-8")
     assert "agent 阅读项目代码" in report and "快速扫描模式" not in report
     assert (tmp_path / "out/stages/audit_agent.transcript.jsonl").exists()
+
+
+def test_scanner_hits_must_be_rechecked_and_unjudged_count_as_none(tmp_path):
+    keyword_only = ROOT / "evals/reverse/keyword-only"
+    flagged = _flagged(keyword_only)
+    assert {"s03", "s09"} <= set(flagged)          # 扫描器被注释和变量名骗了
+    loop = {"strength": "strong", "evidence": [{"file": "src/agent.py", "line": 42, "note": "while True 调模型"}]}
+
+    def finish(skip):
+        components = {cid: {"strength": "none", "evidence": []} for cid in flagged if cid != skip}
+        components["s01"] = loop
+        return reply(use("finish", {"intent": _intent(), "components": components}, f"f-{skip}"))
+
+    runner = ScriptRunner([reply(use("read_file", {"path": "src/agent.py"})), finish("s09"), finish("")])
+    audit, _ = run_audit(keyword_only, runner, tmp_path / "out", log=quiet)
+    rejected = runner.seen_messages[2][-1]["content"][0]["content"]
+    assert "s09" in rejected and "扫描器判为有" in rejected
+    present = {g.id: g.present for g in audit.gaps}
+    assert present["s03"] == "none" and present["s09"] == "none"
+    assert all(present[cid] == "none" for cid in present if cid not in flagged)
 
 
 def test_resume_reuses_agent_findings(tmp_path):

@@ -109,6 +109,8 @@ def compare(decisions: list[dict], inventory: Inventory,
         if finding:
             present = finding["strength"]
             evidence = [f"{e['file']}:{e['line']} {e['note']}" for e in finding["evidence"][:4]]
+        elif findings is not None:     # agent 模式：没交结论的组件扫描也没命中（命中的都要求核实了）
+            present, evidence = "none", []
         else:
             present = sig.strength if sig else "none"
             evidence = [f"{h.file}:{h.line} `{h.text}`" for h in (sig.hits[:4] if sig else [])]
@@ -130,8 +132,9 @@ def _elements_missing(intent: dict, inventory: Inventory, findings: dict | None 
     missing: list[str] = []
 
     def strength(cid: str) -> str:
-        finding = (findings or {}).get(cid)
-        return finding["strength"] if finding else inventory.components[cid].strength
+        if findings is not None:
+            return findings.get(cid, {}).get("strength", "none")
+        return inventory.components[cid].strength
 
     if strength("s02") == "none":
         missing.append("工具：没有扫描到任何工具定义（input_schema / tools=[...]）")

@@ -18,7 +18,7 @@ function Welcome() {
     <div className="mb-6 px-2">
       <h1 className="text-2xl font-semibold tracking-tight">你想做一个什么样的 Agent？</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        一句话就行。我会再问你三轮：给谁用、怎么用、什么不能做，然后整理成需求，交给引擎推导方案。说不清的地方直接说不知道。
+        一句话就行。我会问你几个问题：给谁用、怎么用、什么不能做，信息够了就整理成需求，交给引擎推导方案。说不清的地方直接说不知道。
       </p>
     </div>
   )

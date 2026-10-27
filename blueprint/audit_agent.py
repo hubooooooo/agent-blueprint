@@ -311,7 +311,9 @@ def investigate(project: Path, inventory: Inventory, runner, out_dir: Path, prd_
     result = run_agent("audit_agent", SYSTEM, prompt, _tools(files, prd_decisions is None), RESULT_SCHEMA, runner,
                        log=log, max_turns=max_turns, describe=_describe,
                        check=make_check(files, required),
-                       transcript=out_dir / "stages" / "audit_agent.transcript.jsonl")
+                       transcript=out_dir / "stages" / "audit_agent.transcript.jsonl",
+                       last_turn_hint="调查轮数或费用已用完。请立即调用 finish，用已掌握的信息交卷；"
+                                      "没核实到的组件判 weak 或 none，并在 note 里写明未核实。")
     intent = coerce_stage_output("infer", result["intent"])
     findings = {cid: {"strength": f["strength"],
                       "evidence": [{**ev, "file": _norm(ev["file"])} for ev in f["evidence"]]}

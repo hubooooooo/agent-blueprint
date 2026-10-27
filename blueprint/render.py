@@ -66,6 +66,10 @@ def render_plan(plan: "Plan") -> str:
     status = "方案待确认" if review.get("ok") else "方案待确认（审稿未完全通过，见文末审稿意见）"
     w(f"> 状态：{status}（Step 1–4 已完成，Step 5 代码生成需确认后启动）")
     w(f"> 推导引擎：Agent Blueprint · 模型：{plan.runner}")
+    if plan.design_mode == "agent":
+        w("> 领域建模与架构设计由 agent 完成：可查组件说明，交卷前用规则自检（工具与选型一致、四类降级场景齐全等）。")
+    elif plan.design_note:
+        w(f"> ⚠️ 领域建模与架构设计用的是固定流程：{plan.design_note}。")
     if plan.runner == "mock":
         w("> 离线演示：方案与审稿为占位结果，仅用于预览流程，不能作为真实产品决策依据。")
         w(">")
@@ -182,6 +186,13 @@ def render_plan(plan: "Plan") -> str:
     w(design.get("tech_stack_and_deployment", "").strip())
     w("")
 
+    if design.get("testing"):
+        w("### 测试设计")
+        w("")
+        for line in design["testing"]:
+            w(f"- {line}")
+        w("")
+
     w("## 验收标准对照（可落地 vs demo）")
     w("")
     w("| 标准 | 要求 | 本方案的对应设计 |")
@@ -190,7 +201,7 @@ def render_plan(plan: "Plan") -> str:
         "runnable": design.get("tech_stack_and_deployment", ""),
         "fault_tolerant": "；".join(design.get("security_and_degradation", [])[:3]),
         "observable": "；".join(obs.get("logs", [])[:2] + obs.get("metrics", [])[:2]),
-        "testable": "Step 5 骨架层需附核心循环与权限边界的单测",
+        "testable": "；".join(design.get("testing", [])) or "Step 5 骨架层需附核心循环与权限边界的单测",
         "deployable": design.get("tech_stack_and_deployment", ""),
         "measurable": "；".join(obs.get("metrics", [])),
     }

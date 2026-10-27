@@ -91,6 +91,7 @@ export type Plan = {
   security_and_degradation: string[]
   observability: { logs?: string[]; metrics?: string[]; trajectory?: string }
   tech_stack_and_deployment: string
+  testing: string[]
   review: {
     ok?: boolean
     score?: number

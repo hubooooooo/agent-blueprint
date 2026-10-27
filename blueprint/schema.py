@@ -170,7 +170,7 @@ MODEL_SCHEMA = {
 DESIGN_SCHEMA = {
     "type": "object",
     "required": ["tool_list", "system_prompt", "context_memory_strategy",
-                 "security_and_degradation", "observability", "tech_stack_and_deployment"],
+                 "security_and_degradation", "observability", "tech_stack_and_deployment", "testing"],
     "properties": {
         "tool_list": {
             "type": "array", "minItems": 1,
@@ -196,6 +196,7 @@ DESIGN_SCHEMA = {
             "properties": {"logs": _STR_LIST, "metrics": _STR_LIST, "trajectory": {"type": "string"}},
         },
         "tech_stack_and_deployment": {"type": "string"},
+        "testing": {"type": "array", "minItems": 1, "items": {"type": "string"}},
         "open_questions": _STR_LIST,
     },
 }

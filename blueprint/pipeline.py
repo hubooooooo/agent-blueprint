@@ -84,6 +84,38 @@ class StageRunner:
         self.chain = _digest([signature, data])
         return data
 
+    def run_custom(self, stage: str, key: dict, schema: dict, label: str, produce: Callable[[], dict]) -> dict:
+        """和 run() 一样落盘、续跑、串联签名，但结果由 produce() 产出（比如一个 agent 循环）。
+
+        key：决定结果的全部输入（提示词、上游结果、反馈……），任何一项变了就重跑。
+        """
+        path = self.stages_dir / f"{stage}.json"
+        meta_path = self.stages_dir / f"{stage}.meta.json"
+        signature = _digest({"version": 1, "chain": self.chain, "stage": stage, "key": key, "schema": schema,
+                             "runner": getattr(self.runner, "name", ""),
+                             "model": getattr(self.runner, "model", "")})
+        if self.resume and path.exists():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                if (meta.get("signature") == signature and meta.get("output") == _digest(data)
+                        and not validate(schema, data)):
+                    self.log(f"  ↻ {label}：沿用上次结果")
+                    self.chain = _digest([signature, data])
+                    return data
+            except (OSError, ValueError, AttributeError):
+                pass
+            self.log(f"  ↻ {label}：输入、配置或缓存已变化，重新执行")
+        self.log(f"  ▶ {label}")
+        data = produce()
+        errors = validate(schema, data)
+        if errors:
+            raise StageOutputInvalid(f"阶段 {stage} 输出不合格式：{errors}")
+        atomic_write(path, json.dumps(data, ensure_ascii=False, indent=2))
+        atomic_write(meta_path, json.dumps({"signature": signature, "output": _digest(data)}))
+        self.chain = _digest([signature, data])
+        return data
+
     def _dump_failed_attempts(self, stage: str) -> Path | None:
         attempts = getattr(self.runner, "attempts", None)
         if not attempts:

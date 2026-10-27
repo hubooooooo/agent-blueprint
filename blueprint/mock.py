@@ -149,7 +149,8 @@ class MockRunner:
                 ],
                 "observability": {"logs": ["每次工具调用", "每轮耗时"], "metrics": ["成功率", "平均时延"],
                                   "trajectory": "JSONL 记录每一步"},
-                "tech_stack_and_deployment": "第一版单进程 Python；模型来自 .env 配置。",
+                "tech_stack_and_deployment": "第一版单进程 Python，一条命令 python main.py 启动；模型与密钥来自 .env 配置。",
+                "testing": ["核心循环与工具分派的单元测试（mock 模型）", "权限边界测试：写入与删除类操作必须先经审批"],
                 "open_questions": [],
             }
         if stage in ("review", "audit_review"):

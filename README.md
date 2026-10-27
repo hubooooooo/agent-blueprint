@@ -197,12 +197,12 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 
 <table>
 <tr><th align="left" width="56%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">操作</th><th align="left" width="22%">模型调用</th><th align="left" width="22%">tokens</th></tr>
-<tr><td>一份完整方案，含一次审稿打回重写</td><td>6 次</td><td>约 4 万</td></tr>
-<tr><td>一次反向检查</td><td>2 次</td><td>约 1 万</td></tr>
+<tr><td>一份完整方案（agent 推导）</td><td>5–7 次</td><td>约 2.5–4 万</td></tr>
+<tr><td>一次反向检查（agent 读代码）</td><td>4–9 次</td><td>约 1–3 万</td></tr>
 <tr><td><code>revise --quick</code></td><td>1 次</td><td>约 0.5 万</td></tr>
 </table>
 
-每次运行默认最多 16 次调用、40 万 tokens，超出会停下并提示续跑，不会无限扣费。
+每次运行默认最多 40 次调用、150 万 tokens（检查项目加 `--fast` 时是 16 次、40 万），超出会停下并提示续跑，不会无限扣费。实际用量通常远低于上限。
 
 ---
 
@@ -255,7 +255,7 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 只会发给你在 `.env` 里配置的模型服务。正向推导发送你的点子或 PRD。反向检查默认由 agent 读代码，它读过的文件内容会发给模型；`.env`、私钥等密钥文件一律不读，依赖目录和隐藏目录也会跳过。加 `--fast` 时只发送 README、目录结构和扫描命中的代码片段。`.env` 和 `out/` 都不进 git，学生打包工具也会排除它们。
 
 **结果靠谱吗？**
-特征判断在题库上的一致率约 90%，单次运行会有一两题波动。方案末尾的独立审稿经常给出「未通过」，这是设计如此：审稿就是要把方案里的矛盾挑出来，这些意见就是你下一轮要回答的问题。反向报告默认由 agent 读代码核实，「信号覆盖率」按核实结果计算；它没有运行被检查的项目，所以仍然不是功能完成度。
+特征判断在题库上的一致率约 90%，单次运行会有一两题波动。方案末尾的独立审稿有时会给出「未通过」，这是设计如此：审稿就是要把方案里的矛盾挑出来，这些意见就是你下一轮要回答的问题。agent 推导时会先按规则自检一遍，实测三道题都一次过审，但样本还小。反向报告默认由 agent 读代码核实，「信号覆盖率」按核实结果计算；它没有运行被检查的项目，所以仍然不是功能完成度。
 
 **Windows 能用吗？**
 引擎本身是纯 Python，但只在 macOS 和 Linux 上测试过。Windows 建议用 WSL 或方式二。s13、s15、s16 的参考实现依赖 `fcntl`，只能在 macOS 和 Linux 上运行。

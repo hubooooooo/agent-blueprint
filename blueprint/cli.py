@@ -31,9 +31,9 @@ DEFAULT_OUT = Path(os.environ.get("BLUEPRINT_OUT") or ROOT / "out")
 from blueprint.workspace import log_plan, slugify as _slug  # noqa: E402
 
 
-# 检查项目（audit / verify）默认由 agent 读代码，调用次数和 token 都比固定流程多，费用护栏单独放宽。
-PLAN_LIMITS = (16, 400_000)
-AGENT_AUDIT_LIMITS = (40, 1_500_000)
+# 推导方案、检查项目默认都由 agent 完成，调用次数和 token 比固定流程多；--fast 的检查回到原来的护栏。
+AGENT_LIMITS = (40, 1_500_000)
+FAST_LIMITS = (16, 400_000)
 
 
 def make_runner(args) -> object:
@@ -41,8 +41,7 @@ def make_runner(args) -> object:
         from blueprint.mock import MockRunner
         return MockRunner()
     from blueprint.llm import AnthropicRunner
-    agent_audit = getattr(args, "cmd", "") in ("audit", "verify", "eval") and not getattr(args, "fast", False)
-    calls, tokens = AGENT_AUDIT_LIMITS if agent_audit else PLAN_LIMITS
+    calls, tokens = FAST_LIMITS if getattr(args, "fast", False) else AGENT_LIMITS
     budget = Budget(max_calls=args.max_calls or calls, max_tokens=args.max_tokens or tokens)
     return AnthropicRunner(model=getattr(args, "model", None), budget=budget)
 
@@ -176,8 +175,8 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--mock", action="store_true", help="离线模式：不调模型，用启发式占位")
         sp.add_argument("--resume", action="store_true", help="沿用已完成阶段的结果")
         sp.add_argument("--model", help="覆盖 .env 的 MODEL_ID")
-        sp.add_argument("--max-calls", type=int, help="费用护栏：最多调模型次数（默认 16；检查项目默认 40）")
-        sp.add_argument("--max-tokens", type=int, help="费用护栏：token 总量上限（默认 40 万；检查项目默认 150 万）")
+        sp.add_argument("--max-calls", type=int, help="费用护栏：最多调模型次数（默认 40；--fast 时 16）")
+        sp.add_argument("--max-tokens", type=int, help="费用护栏：token 总量上限（默认 150 万；--fast 时 40 万）")
 
     sp = sub.add_parser("plan", help="正向：点子 / 不完整 PRD → 完整方案")
     sp.add_argument("input", help="点子文件路径，或直接一句话")
@@ -194,8 +193,8 @@ def build_parser() -> argparse.ArgumentParser:
     def model_opts(sp):
         sp.add_argument("--mock", action="store_true", help="离线模式：不调模型，用启发式占位")
         sp.add_argument("--model", help="覆盖 .env 的 MODEL_ID")
-        sp.add_argument("--max-calls", type=int, help="费用护栏：最多调模型次数（默认 16；检查项目默认 40）")
-        sp.add_argument("--max-tokens", type=int, help="费用护栏：token 总量上限（默认 40 万；检查项目默认 150 万）")
+        sp.add_argument("--max-calls", type=int, help="费用护栏：最多调模型次数（默认 40；--fast 时 16）")
+        sp.add_argument("--max-tokens", type=int, help="费用护栏：token 总量上限（默认 150 万；--fast 时 40 万）")
 
     sp = sub.add_parser("init", help="产品循环①：新建 out/<产品名>/ 工作区（PRD 模板、迭代记录、skeleton/）")
     sp.add_argument("name", help="产品名（用作目录名）")

@@ -78,8 +78,10 @@ class App:
         if self.mock:
             from blueprint.mock import MockRunner
             return MockRunner()
+        from blueprint.cli import AGENT_LIMITS
         from blueprint.llm import AnthropicRunner, Budget
-        return AnthropicRunner(budget=Budget())
+        calls, tokens = AGENT_LIMITS          # 推导默认走 agent，护栏和命令行一致
+        return AnthropicRunner(budget=Budget(max_calls=calls, max_tokens=tokens))
 
     def product(self, slug: str) -> dict:
         ws = resolve_workspace(self.out_root, slug)

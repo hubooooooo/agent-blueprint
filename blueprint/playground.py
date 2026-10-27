@@ -2,12 +2,14 @@
 
 这只是演示，不是产品，也不是原型：没有代码文件、不能导出、不进交接包。
 
-默认（_scripted_events）：一次调用编出整轮动作和回复，约 10 秒。
-
-设置环境变量 BLUEPRINT_PLAY_AGENT=on 且模型支持工具时：这个 Agent 以方案里的系统提示词为身份，方案工具清单里的每个工具注册成真工具，由它
-自己决定调不调。每次调用由代码按方案里的权限处理——allow 交给另一次模型调用扮演外部世界编一个结果，
+默认（模型支持工具调用时）：这个 Agent 以方案里的系统提示词为身份，方案工具清单里的每个工具注册成真工具，
+由它自己决定调不调。每次调用由代码按方案里的权限处理——allow 交给另一次模型调用扮演外部世界编一个结果，
 ask 不执行、记为「先问人」，deny 不执行、记为「按规则拦下」。它还能调 block_request 声明按规则拒绝。
-agent 版的卡片和拦截结果实测与默认写法基本一致，但每句话要多等约 3 倍时间，所以默认关闭（2026-10-27）。
+权限由代码保证，不靠模型听话：同学们用的模型五花八门，便宜模型未必守得住提示词里的规矩。
+每调用一次工具就把卡片推给界面，不用等整轮跑完。
+
+退回（_scripted_events）：一次调用编出整轮动作和回复，规矩只靠提示词。BLUEPRINT_PLAY_AGENT=off、
+模型不支持工具调用、agent 出错时用。
 
 事件格式同 chat.py，另加：
   {"type": "data", "name": "play_step", "data": {...}}       一步模拟动作（调用工具／先问人／拦下）
@@ -20,8 +22,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import queue
+import threading
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
 
 from blueprint.agent import Tool, run_agent, supports_agent
 from blueprint.chat import Message, _prd_context, transcript
@@ -135,17 +139,40 @@ def play_events(plan: dict, messages: list[Message], prd: str, model) -> Iterato
     if not any(m.role == "user" and m.text.strip() for m in messages):
         raise ValueError("先以使用者的身份说一句话")
     runner = getattr(model, "runner", None)
-    if os.getenv("BLUEPRINT_PLAY_AGENT", "").strip().lower() in ("on", "1", "true") and supports_agent(runner):
-        try:
-            steps, reply = _agent_turn(design, messages, prd, model)
-        except (BudgetExceeded, ValueError):
-            raise
-        except Exception:  # noqa: BLE001 —— agent 失败不能让试玩卡住，这一轮退回一次调用的写法
-            pass
-        else:
-            yield from _turn_events(steps, reply)
-            return
+    if os.getenv("BLUEPRINT_PLAY_AGENT", "").strip().lower() not in ("off", "0", "false") and supports_agent(runner):
+        yield from _live_agent_events(design, messages, prd, model)
+        return
     yield from _scripted_events(design, messages, prd, model)
+
+
+def _live_agent_events(design: dict, messages: list[Message], prd: str, model) -> Iterator[dict]:
+    """在后台线程里跑 agent，每张卡片一出来就推给界面；一整轮可能要半分钟，不能让人干等。"""
+    steps: queue.Queue = queue.Queue()
+    outcome: dict = {}
+
+    def work() -> None:
+        try:
+            outcome["reply"] = _agent_turn(design, messages, prd, model, on_step=steps.put)[1]
+        except BaseException as exc:  # noqa: BLE001 —— 交给生成器那边决定退回还是报错
+            outcome["error"] = exc
+        finally:
+            steps.put(None)
+
+    threading.Thread(target=work, daemon=True).start()
+    shown = 0
+    while (step := steps.get()) is not None:
+        shown += 1
+        yield {"type": "data", "name": "play_step", "data": step}
+    error = outcome.get("error")
+    if error is None:
+        yield from _turn_events([], outcome["reply"])
+    elif isinstance(error, (BudgetExceeded, ValueError)):
+        raise error
+    elif shown:
+        # 已经推出去几张卡片了，再退回一次调用的写法会重复演一遍，直接说明这一轮没演完
+        yield from _turn_events([], "（这一轮演示出错，没有演完，可以重新发一次试试）")
+    else:   # agent 一步都没走成，这一轮退回一次调用的写法
+        yield from _scripted_events(design, messages, prd, model)
 
 
 def _turn_events(steps: list[dict], reply: str) -> Iterator[dict]:
@@ -156,8 +183,12 @@ def _turn_events(steps: list[dict], reply: str) -> Iterator[dict]:
     yield {"type": "data", "name": "play_feedback", "data": {}}
 
 
-def _agent_turn(design: dict, messages: list[Message], prd: str, model) -> tuple[list[dict], str]:
-    """跑一轮：Agent 按方案真的调用工具，代码按权限处理每次调用。返回 (界面卡片, 回复)。"""
+def _agent_turn(design: dict, messages: list[Message], prd: str, model,
+                on_step: Callable[[dict], None] = lambda _s: None) -> tuple[list[dict], str]:
+    """跑一轮：Agent 按方案真的调用工具，代码按权限处理每次调用。返回 (界面卡片, 回复)。
+
+    on_step：每出一张卡片就回调一次，用来边跑边推给界面。
+    """
     tools = _tools(design)
     names = {t["name"] for t in tools}
     steps: list[dict] = []
@@ -167,6 +198,7 @@ def _agent_turn(design: dict, messages: list[Message], prd: str, model) -> tuple
         clean = _clean_step(step, names)
         if clean:
             steps.append(clean)
+            on_step(clean)
 
     def make_handler(tool: dict):
         def handle(args: dict) -> str:

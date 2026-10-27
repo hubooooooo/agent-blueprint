@@ -1,0 +1,9 @@
+{
+  "agent_only": true,
+  "present_strong_or_weak": ["s01", "s02"],
+  "present_not_strong": ["s03", "s09"],
+  "present_none": ["s12", "s13"],
+  "acceptance_fail": [],
+  "llm_sdk": "anthropic",
+  "note": "关键词陷阱（误报）：permission / deny list / memory / remember 到处都是，但 check_permission 永远返回 True、remember 什么都不存。快速扫描会把 s03、s09 判成有；agent 应判 none 或 weak。发邮件给全组是破坏性操作，s03 应为必选"
+}

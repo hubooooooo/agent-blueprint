@@ -6,6 +6,8 @@
      并守住下限：标准答案判「放弃」的组件，mock 不得判成必选/二期
 真模型（--real）：
   正向三题各跑一次「需求拆解」，统计特征判断与标准答案的一致率；不跑后续阶段以省钱。
+真模型反向（--real-audit [--repeat N]）：
+  反向各题用 agent 完整跑检查，核对组件强弱；agent_only 的题（关键词陷阱）只在这里判对错。
 """
 
 from __future__ import annotations
@@ -70,19 +72,29 @@ def check_forward_pipeline(case: Path, runner, out_dir: Path) -> list[str]:
     return problems
 
 
-def check_reverse_pipeline(case: Path, target: Path, runner, out_dir: Path) -> list[str]:
+def check_reverse_pipeline(case: Path, target: Path, runner, out_dir: Path):
+    """返回 (问题列表, audit)。组件强弱看最终采用的结论：agent 模式是 agent 核实的，否则是扫描结果。"""
     from blueprint.reverse import run_audit
-    audit, doc = run_audit(target, runner, out_dir, log=lambda _m: None)
+    # 题目目录里有标准答案 expected.json，agent 会读文件，必须先拿掉再检查
+    project = out_dir.parent / f"{out_dir.name}-project"
+    shutil.rmtree(project, ignore_errors=True)
+    shutil.copytree(target, project, ignore=shutil.ignore_patterns("expected.json", "target.txt", "__pycache__"))
+    audit, doc = run_audit(project, runner, out_dir, log=lambda _m: None)
     content = doc.read_text(encoding="utf-8")
     problems = [f"报告缺少章节「{s}」" for s in AUDIT_SECTIONS if s not in content]
     expected = json.loads((case / "expected.json").read_text(encoding="utf-8"))
-    comps = audit.inventory_brief["components"]
-    for cid in expected.get("present_strong_or_weak", []):
-        if comps[cid]["strength"] == "none":
-            problems.append(f"{cid} 应被扫描到，实际 none")
-    for cid in expected.get("present_none", []):
-        if comps[cid]["strength"] != "none":
-            problems.append(f"{cid} 不应被扫描到，实际 {comps[cid]['strength']}")
+    present = {cid: c["strength"] for cid, c in audit.inventory_brief["components"].items()}
+    present.update({g.id: g.present for g in audit.gaps})
+    judge = audit.mode == "agent" or not expected.get("agent_only")   # 关键词陷阱题：快速扫描本来就会判错
+    for cid in expected.get("present_strong_or_weak", []) if judge else []:
+        if present[cid] == "none":
+            problems.append(f"{cid} 应判有，实际 none")
+    for cid in expected.get("present_not_strong", []) if judge else []:
+        if present[cid] == "strong":
+            problems.append(f"{cid} 只有关键词没有实现，不应判 strong")
+    for cid in expected.get("present_none", []) if judge else []:
+        if present[cid] != "none":
+            problems.append(f"{cid} 应判 none，实际 {present[cid]}")
     for key in expected.get("acceptance_fail", []):
         if audit.acceptance[key]["status"] == "pass":
             problems.append(f"验收 {key} 应不通过，实际 pass")
@@ -91,10 +103,11 @@ def check_reverse_pipeline(case: Path, target: Path, runner, out_dir: Path) -> l
         problems.append(f"应识别出 SDK {sdk}")
     if not (out_dir / "本该有的PRD.md").exists():
         problems.append("缺少 本该有的PRD.md")
-    return problems
+    return problems, audit
 
 
-def run_evals(real: bool = False, runner_factory: Callable[[], object] | None = None) -> int:
+def run_evals(real: bool = False, runner_factory: Callable[[], object] | None = None,
+              real_audit: bool = False, repeat: int = 1) -> int:
     failures = 0
     print("== 规则回归（正向）==")
     for case in forward_cases():
@@ -111,7 +124,7 @@ def run_evals(real: bool = False, runner_factory: Callable[[], object] | None = 
             print(f"  {'✅' if not problems else '❌'} plan {case.name}" + ("" if not problems else "\n     - " + "\n     - ".join(problems)))
             failures += bool(problems)
         for case, target in reverse_cases():
-            problems = check_reverse_pipeline(case, target, MockRunner(), tmp / f"rev-{case.name}")
+            problems, _audit = check_reverse_pipeline(case, target, MockRunner(), tmp / f"rev-{case.name}")
             print(f"  {'✅' if not problems else '❌'} audit {case.name}" + ("" if not problems else "\n     - " + "\n     - ".join(problems)))
             failures += bool(problems)
 
@@ -150,8 +163,30 @@ def run_evals(real: bool = False, runner_factory: Callable[[], object] | None = 
                 print(f"  {case.name}: {feature_agree}/{len(expected)}" + ("" if not diffs else "\n     - " + "\n     - ".join(diffs)))
                 (tmp / f"real-{case.name}.json").write_text(json.dumps(got, ensure_ascii=False, indent=2), encoding="utf-8")
             print(f"  特征一致率：{agree}/{total} = {agree / total:.0%}")
+
+        if real_audit:
+            if runner_factory is None:
+                raise ValueError("real_audit 模式需要 runner_factory")
+            print(f"== 真实模型：反向检查（agent，每题 {repeat} 次）==")
+            for case, target in reverse_cases():
+                for i in range(1, repeat + 1):
+                    try:
+                        problems, audit = check_reverse_pipeline(case, target, runner_factory(),
+                                                                 tmp / f"real-rev-{case.name}-{i}")
+                    except Exception as exc:  # noqa: BLE001 —— 一题接口出错不影响其余题目
+                        print(f"  ❌ audit {case.name} #{i}：接口报错 {str(exc)[:120]}")
+                        failures += 1
+                        continue
+                    if audit.mode != "agent":
+                        problems.append(f"没有用上 agent：{audit.mode_note}")
+                    b = audit.budget
+                    cost = (f"调用 {b.get('calls', 0)} 次，{b.get('input_tokens', 0) + b.get('output_tokens', 0)} tokens，"
+                            f"读过 {audit.agent_stats.get('files_seen', 0)} 个文件")
+                    print(f"  {'✅' if not problems else '❌'} audit {case.name} #{i}（{cost}）"
+                          + ("" if not problems else "\n     - " + "\n     - ".join(problems)))
+                    failures += bool(problems)
     finally:
-        if not real:
+        if not (real or real_audit):
             shutil.rmtree(tmp, ignore_errors=True)
         else:
             print(f"  真实输出保存在 {tmp}")

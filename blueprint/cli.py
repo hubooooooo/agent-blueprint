@@ -1,13 +1,13 @@
 """命令行入口。
 
   python -m blueprint plan   idea.md [-o out/xxx] [--mock] [--resume]
-  python -m blueprint audit  ./project [--prd prd.md] [-o out/xxx] [--mock]
-  python -m blueprint eval   [--real]
+  python -m blueprint audit  ./project [--prd prd.md] [-o out/xxx] [--mock] [--fast]
+  python -m blueprint eval   [--real] [--real-audit [--repeat 3]]
 
   产品循环（全部在 out/<产品名>/ 里）：
   python -m blueprint init   "<产品名>" "<一句话点子>" [--plan]
   python -m blueprint revise out/<产品名> "<新需求>" [--no-plan]
-  python -m blueprint verify out/<产品名>
+  python -m blueprint verify out/<产品名> [--fast]
   python -m blueprint handoff out/<产品名> [-o 交接包.zip]
 
   网页界面（给不用终端的用户）：
@@ -31,12 +31,19 @@ DEFAULT_OUT = Path(os.environ.get("BLUEPRINT_OUT") or ROOT / "out")
 from blueprint.workspace import log_plan, slugify as _slug  # noqa: E402
 
 
+# 检查项目（audit / verify）默认由 agent 读代码，调用次数和 token 都比固定流程多，费用护栏单独放宽。
+PLAN_LIMITS = (16, 400_000)
+AGENT_AUDIT_LIMITS = (40, 1_500_000)
+
+
 def make_runner(args) -> object:
     if getattr(args, "mock", False):
         from blueprint.mock import MockRunner
         return MockRunner()
     from blueprint.llm import AnthropicRunner
-    budget = Budget(max_calls=args.max_calls, max_tokens=args.max_tokens)
+    agent_audit = getattr(args, "cmd", "") in ("audit", "verify", "eval") and not getattr(args, "fast", False)
+    calls, tokens = AGENT_AUDIT_LIMITS if agent_audit else PLAN_LIMITS
+    budget = Budget(max_calls=args.max_calls or calls, max_tokens=args.max_tokens or tokens)
     return AnthropicRunner(model=getattr(args, "model", None), budget=budget)
 
 
@@ -70,7 +77,8 @@ def cmd_audit(args) -> int:
     out_dir = Path(args.out) if args.out else DEFAULT_OUT / f"audit-{_slug(project.resolve().name)}"
     from blueprint.reverse import run_audit
     print(f"反向审计：{project} → {out_dir}")
-    audit, doc = run_audit(project, make_runner(args), out_dir, prd_text=prd_text, resume=args.resume)
+    audit, doc = run_audit(project, make_runner(args), out_dir, prd_text=prd_text, resume=args.resume,
+                           fast=args.fast)
     print(f"\n✅ 差距报告已生成：{doc}")
     print(f"   必选组件信号覆盖率 {int(audit.completion * 100)}%")
     return 0
@@ -147,7 +155,7 @@ def cmd_ui(args) -> int:
 def cmd_verify(args) -> int:
     from blueprint.workspace import verify_workspace
     ws = Path(args.workspace)
-    audit, doc = verify_workspace(ws, make_runner(args))
+    audit, doc = verify_workspace(ws, make_runner(args), fast=args.fast)
     print(f"\n✅ 验证报告：{doc}")
     print(f"   必选组件信号覆盖率 {int(audit.completion * 100)}%；人工验证结论请填进 {ws / '迭代记录.md'}")
     return 0
@@ -155,7 +163,8 @@ def cmd_verify(args) -> int:
 
 def cmd_eval(args) -> int:
     from blueprint.evals import run_evals
-    return run_evals(real=args.real, runner_factory=lambda: make_runner(args))
+    return run_evals(real=args.real, runner_factory=lambda: make_runner(args),
+                     real_audit=args.real_audit, repeat=args.repeat)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -167,8 +176,8 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--mock", action="store_true", help="离线模式：不调模型，用启发式占位")
         sp.add_argument("--resume", action="store_true", help="沿用已完成阶段的结果")
         sp.add_argument("--model", help="覆盖 .env 的 MODEL_ID")
-        sp.add_argument("--max-calls", type=int, default=16, help="费用护栏：最多调模型次数")
-        sp.add_argument("--max-tokens", type=int, default=400_000, help="费用护栏：token 总量上限")
+        sp.add_argument("--max-calls", type=int, help="费用护栏：最多调模型次数（默认 16；检查项目默认 40）")
+        sp.add_argument("--max-tokens", type=int, help="费用护栏：token 总量上限（默认 40 万；检查项目默认 150 万）")
 
     sp = sub.add_parser("plan", help="正向：点子 / 不完整 PRD → 完整方案")
     sp.add_argument("input", help="点子文件路径，或直接一句话")
@@ -178,14 +187,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("audit", help="反向：已有项目 → 差距报告")
     sp.add_argument("project", help="项目目录")
     sp.add_argument("--prd", help="可选：对照的 PRD 文件")
+    sp.add_argument("--fast", action="store_true", help="快速扫描：不让 agent 读代码，只按关键词判断（省钱，但可能误判）")
     common(sp)
     sp.set_defaults(func=cmd_audit)
 
     def model_opts(sp):
         sp.add_argument("--mock", action="store_true", help="离线模式：不调模型，用启发式占位")
         sp.add_argument("--model", help="覆盖 .env 的 MODEL_ID")
-        sp.add_argument("--max-calls", type=int, default=16, help="费用护栏：最多调模型次数")
-        sp.add_argument("--max-tokens", type=int, default=400_000, help="费用护栏：token 总量上限")
+        sp.add_argument("--max-calls", type=int, help="费用护栏：最多调模型次数（默认 16；检查项目默认 40）")
+        sp.add_argument("--max-tokens", type=int, help="费用护栏：token 总量上限（默认 40 万；检查项目默认 150 万）")
 
     sp = sub.add_parser("init", help="产品循环①：新建 out/<产品名>/ 工作区（PRD 模板、迭代记录、skeleton/）")
     sp.add_argument("name", help="产品名（用作目录名）")
@@ -204,6 +214,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("verify", help="产品循环④：用 PRD 对照 skeleton/ 做差距检查，报告写入 verify/")
     sp.add_argument("workspace", help="工作区目录，如 out/<产品名>")
+    sp.add_argument("--fast", action="store_true", help="快速扫描：不让 agent 读代码，只按关键词判断（省钱，但可能误判）")
     model_opts(sp)
     sp.set_defaults(func=cmd_verify)
 
@@ -220,6 +231,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("eval", help="跑测试题（默认离线）")
     sp.add_argument("--real", action="store_true", help="用真实模型跑正向测试题并统计特征判断准确率")
+    sp.add_argument("--real-audit", action="store_true", help="用真实模型（agent）跑反向检查测试题")
+    sp.add_argument("--repeat", type=int, default=1, help="--real-audit 时每题跑几次")
     common(sp)
     sp.set_defaults(func=cmd_eval)
 
@@ -239,3 +252,12 @@ def main(argv: list[str] | None = None) -> None:
     except (OSError, ValueError) as exc:
         print(f"\n⛔ {exc}")
         sys.exit(1)
+    except Exception as exc:
+        from anthropic import APIError, APITimeoutError
+        if isinstance(exc, APITimeoutError):
+            print("\n⛔ 模型接口超时。可以设置环境变量 BLUEPRINT_TIMEOUT=300 调大超时，再加 --resume 继续。")
+        elif isinstance(exc, APIError):
+            print(f"\n⛔ 模型接口报错：{exc}。已完成的阶段已保存，可加 --resume 继续。")
+        else:
+            raise
+        sys.exit(4)

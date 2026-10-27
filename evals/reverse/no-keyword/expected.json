@@ -1,0 +1,8 @@
+{
+  "agent_only": true,
+  "present_strong_or_weak": ["s01", "s02", "s03"],
+  "present_none": ["s09", "s12", "s13"],
+  "acceptance_fail": [],
+  "llm_sdk": "anthropic",
+  "note": "关键词陷阱（漏报）：删除前有路径限制（只许下载目录、保护系统目录）和逐个确认，但函数叫 ask_before_rm，没有 permission / deny / safe_path 等关键词。快速扫描会把 s03 判成无；agent 应判有"
+}

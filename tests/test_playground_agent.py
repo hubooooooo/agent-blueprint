@@ -66,8 +66,8 @@ class PlayModel:
 
 
 @pytest.fixture(autouse=True)
-def agent_on(monkeypatch):
-    monkeypatch.setenv("BLUEPRINT_PLAY_AGENT", "on")
+def agent_default(monkeypatch):
+    monkeypatch.delenv("BLUEPRINT_PLAY_AGENT", raising=False)       # 默认就是 agent 版
 
 
 def run(model, text="有什么面包？"):
@@ -155,7 +155,19 @@ def test_mock_chat_uses_scripted_turn():
     assert "离线演示" in reply_text(events)
 
 
-def test_agent_is_off_by_default(monkeypatch):
-    monkeypatch.delenv("BLUEPRINT_PLAY_AGENT")
+def test_agent_can_be_turned_off(monkeypatch):
+    monkeypatch.setenv("BLUEPRINT_PLAY_AGENT", "off")
     model = PlayModel([])
     assert "离线演示" in reply_text(run(model)) and model.runner.seen == []
+
+
+def test_cards_come_before_reply():
+    model = PlayModel([reply(use("lookup_menu", {"input": "面包"}, "t1")), say("有吐司。")])
+    kinds = [e.get("name") or e["type"] for e in run(model)]
+    assert kinds == ["play_step", "text", "play_feedback"]
+
+
+def test_failure_after_cards_does_not_replay_the_turn():
+    model = PlayModel([reply(use("lookup_menu", {"input": "面包"}, "t1")), RuntimeError("网络断了")])
+    events = run(model)
+    assert len(steps(events)) == 1 and "没有演完" in reply_text(events) and "离线演示" not in reply_text(events)

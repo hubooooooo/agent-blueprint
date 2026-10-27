@@ -138,8 +138,7 @@ class App:
 
     def play_chat(self, slug: str, body: dict):
         ws, plan = self._plan_for_play(slug)
-        # BLUEPRINT_PLAY_AGENT=on 时 Agent 真的调用工具：自己最多 5 轮，每次 allow 调用另花一次模型编结果
-        # （实测一句话最多约 10 次）；默认写法一句话只调一次，护栏宽一些也不影响
+        # 试玩里 Agent 真的调用工具：自己最多 5 轮，每次 allow 调用另花一次模型编结果（实测一句话最多约 10 次）
         model = self.chat_model(max_calls=16, max_tokens=200_000)
         return metered(ws, model, playground.play_events(plan, chat.parse_messages(body.get("messages")),
                                                          (ws / "PRD.md").read_text(encoding="utf-8"), model))

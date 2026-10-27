@@ -2,10 +2,12 @@
 
 这只是演示，不是产品，也不是原型：没有代码文件、不能导出、不进交接包。
 
-能用 agent 时：这个 Agent 以方案里的系统提示词为身份，方案工具清单里的每个工具注册成真工具，由它
+默认（_scripted_events）：一次调用编出整轮动作和回复，约 10 秒。
+
+设置环境变量 BLUEPRINT_PLAY_AGENT=on 且模型支持工具时：这个 Agent 以方案里的系统提示词为身份，方案工具清单里的每个工具注册成真工具，由它
 自己决定调不调。每次调用由代码按方案里的权限处理——allow 交给另一次模型调用扮演外部世界编一个结果，
 ask 不执行、记为「先问人」，deny 不执行、记为「按规则拦下」。它还能调 block_request 声明按规则拒绝。
-离线演示或 agent 不可用时，退回一次调用编出整轮动作的写法（_scripted_events）。
+agent 版的卡片和拦截结果实测与默认写法基本一致，但每句话要多等约 3 倍时间，所以默认关闭（2026-10-27）。
 
 事件格式同 chat.py，另加：
   {"type": "data", "name": "play_step", "data": {...}}       一步模拟动作（调用工具／先问人／拦下）
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Iterator
 
@@ -132,7 +135,7 @@ def play_events(plan: dict, messages: list[Message], prd: str, model) -> Iterato
     if not any(m.role == "user" and m.text.strip() for m in messages):
         raise ValueError("先以使用者的身份说一句话")
     runner = getattr(model, "runner", None)
-    if supports_agent(runner):
+    if os.getenv("BLUEPRINT_PLAY_AGENT", "").strip().lower() in ("on", "1", "true") and supports_agent(runner):
         try:
             steps, reply = _agent_turn(design, messages, prd, model)
         except (BudgetExceeded, ValueError):
@@ -215,7 +218,7 @@ def _agent_turn(design: dict, messages: list[Message], prd: str, model) -> tuple
 
 
 def _scripted_events(design: dict, messages: list[Message], prd: str, model) -> Iterator[dict]:
-    """一次调用编出整轮动作和回复：离线演示、模型不支持工具、agent 失败时用。"""
+    """一次调用编出整轮动作和回复：默认写法；agent 版失败时也退回这里。"""
     tools = _tools(design)
     prompt = load_prompt("chat_play").format(
         system_prompt=design["system_prompt"],

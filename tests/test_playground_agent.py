@@ -1,6 +1,8 @@
 """试玩 agent 的离线测试：三种权限由代码处理、方案外工具调不了、文字直接当回复、退回一次调用写法。"""
 import json
 
+import pytest
+
 from blueprint import chat, playground
 from blueprint.llm import Budget
 
@@ -61,6 +63,11 @@ class PlayModel:
 
     def stream(self, prompt):
         return self._mock.stream(prompt)
+
+
+@pytest.fixture(autouse=True)
+def agent_on(monkeypatch):
+    monkeypatch.setenv("BLUEPRINT_PLAY_AGENT", "on")
 
 
 def run(model, text="有什么面包？"):
@@ -146,3 +153,9 @@ def test_agent_failure_falls_back_to_scripted_turn():
 def test_mock_chat_uses_scripted_turn():
     events = run(chat.MockChat())
     assert "离线演示" in reply_text(events)
+
+
+def test_agent_is_off_by_default(monkeypatch):
+    monkeypatch.delenv("BLUEPRINT_PLAY_AGENT")
+    model = PlayModel([])
+    assert "离线演示" in reply_text(run(model)) and model.runner.seen == []

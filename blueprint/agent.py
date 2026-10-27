@@ -62,7 +62,8 @@ def run_agent(stage: str, system: str, prompt: str, tools: list[Tool], result_sc
               describe: Callable[[str, dict], str] | None = None,
               transcript: Path | None = None,
               finish_description: str = "调查完成时调用，提交最终结论。参数必须符合给定格式；不合格会被退回。",
-              last_turn_hint: str = "轮数或费用已用完。请立即调用 finish，用已掌握的信息交卷。") -> dict:
+              last_turn_hint: str = "轮数或费用已用完。请立即调用 finish，用已掌握的信息交卷。",
+              text_result: Callable[[str], dict] | None = None) -> dict:
     """跑一个 agent 循环，返回 finish 的参数。
 
     check：schema 之外的业务校验（比如证据必须真实），返回错误列表，非空就退回重交。
@@ -70,6 +71,8 @@ def run_agent(stage: str, system: str, prompt: str, tools: list[Tool], result_sc
     transcript：每轮的模型输出和工具结果写进这个 jsonl，便于排查。
     finish_description：交卷工具的说明，不同场景交的东西不同（结论、下一句话……）。
     last_turn_hint：最后一轮（只剩 finish 可用）时提醒模型的话。
+    text_result：模型不调工具、直接说话时，把这段文字变成交卷结果（比如试玩里 Agent 直接回复使用者）；
+        None 时只接受文字里的交卷 JSON。
     """
     if not supports_agent(runner):
         raise AgentFailed("当前模型接入方式不支持工具调用")
@@ -101,7 +104,7 @@ def run_agent(stage: str, system: str, prompt: str, tools: list[Tool], result_sc
 
         if not uses:
             # 交卷参数太长时有的接口会丢参数，所以也接受写在文字里的交卷 JSON
-            candidate = _text_json(blocks)
+            candidate = text_result(_text(blocks)) if text_result else _text_json(blocks)
             if candidate is not None:
                 errors = judge(candidate)
                 record["results"].append({"tool": "finish(text)", "errors": errors})
@@ -176,8 +179,12 @@ def _add_user_text(messages: list[dict], text: str) -> None:
         messages.append({"role": "user", "content": text})
 
 
+def _text(blocks: list) -> str:
+    return "".join(_get(b, "text", "") or "" for b in blocks if _get(b, "type") == "text")
+
+
 def _text_json(blocks: list) -> dict | None:
-    text = "".join(_get(b, "text", "") or "" for b in blocks if _get(b, "type") == "text")
+    text = _text(blocks)
     if "{" not in text:
         return None
     try:

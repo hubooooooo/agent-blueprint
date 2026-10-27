@@ -1,8 +1,11 @@
 """试玩：让提出想法的人扮演自己产品的使用者，看看按现在的方案，这个 Agent 大概会怎么表现。
 
-这只是演示，不是产品，也不是原型：没有代码文件、不能导出、不进交接包。每一轮由模型按方案里的
-系统提示词草案和工具清单扮演这个 Agent；工具不会真的执行，结果由模型编一个合理的值并标明是模拟。
-要先经人确认的动作、被红线拦下的请求单独标出来，让人一眼看到边界管不管用。
+这只是演示，不是产品，也不是原型：没有代码文件、不能导出、不进交接包。
+
+能用 agent 时：这个 Agent 以方案里的系统提示词为身份，方案工具清单里的每个工具注册成真工具，由它
+自己决定调不调。每次调用由代码按方案里的权限处理——allow 交给另一次模型调用扮演外部世界编一个结果，
+ask 不执行、记为「先问人」，deny 不执行、记为「按规则拦下」。它还能调 block_request 声明按规则拒绝。
+离线演示或 agent 不可用时，退回一次调用编出整轮动作的写法（_scripted_events）。
 
 事件格式同 chat.py，另加：
   {"type": "data", "name": "play_step", "data": {...}}       一步模拟动作（调用工具／先问人／拦下）
@@ -17,8 +20,10 @@ import json
 from pathlib import Path
 from typing import Iterator
 
+from blueprint.agent import Tool, run_agent, supports_agent
 from blueprint.chat import Message, _prd_context, transcript
 from blueprint.knowledge import load_prompt
+from blueprint.llm import BudgetExceeded
 
 INTRO_STAGE = "chat_play_intro"
 STEP_KINDS = ("tool", "ask_owner", "blocked")
@@ -39,6 +44,11 @@ TURN_SCHEMA = {
 }
 
 TOOL_FIELDS = ("name", "input", "output", "side_effect", "permission")
+AGENT_TURNS = 5
+CARD_INPUT_CHARS = 40          # 卡片给提出想法的人看：Agent 常把整份剧本、整段 JSON 当输入传，只显示开头
+SIM_RESERVE_CALLS = 2          # 给 Agent 回复使用者留的调用次数；不够了就不再模拟工具结果
+SIM_SCHEMA = {"type": "object", "required": ["result"], "properties": {"result": {"type": "string"}}}
+REPLY_SCHEMA = {"type": "object", "required": ["reply"], "properties": {"reply": {"type": "string"}}}
 
 
 def _design(plan: dict) -> dict:
@@ -121,6 +131,91 @@ def play_events(plan: dict, messages: list[Message], prd: str, model) -> Iterato
     design = _design(plan)
     if not any(m.role == "user" and m.text.strip() for m in messages):
         raise ValueError("先以使用者的身份说一句话")
+    runner = getattr(model, "runner", None)
+    if supports_agent(runner):
+        try:
+            steps, reply = _agent_turn(design, messages, prd, model)
+        except (BudgetExceeded, ValueError):
+            raise
+        except Exception:  # noqa: BLE001 —— agent 失败不能让试玩卡住，这一轮退回一次调用的写法
+            pass
+        else:
+            yield from _turn_events(steps, reply)
+            return
+    yield from _scripted_events(design, messages, prd, model)
+
+
+def _turn_events(steps: list[dict], reply: str) -> Iterator[dict]:
+    for step in steps:
+        yield {"type": "data", "name": "play_step", "data": step}
+    # 旁白之后它可能这一轮不说话；直接留空界面上像是卡住了，明说一句
+    yield {"type": "text", "delta": reply.strip() or "（它这一轮没有对你说话）"}
+    yield {"type": "data", "name": "play_feedback", "data": {}}
+
+
+def _agent_turn(design: dict, messages: list[Message], prd: str, model) -> tuple[list[dict], str]:
+    """跑一轮：Agent 按方案真的调用工具，代码按权限处理每次调用。返回 (界面卡片, 回复)。"""
+    tools = _tools(design)
+    names = {t["name"] for t in tools}
+    steps: list[dict] = []
+    history = transcript(messages)
+
+    def record(step: dict) -> None:
+        clean = _clean_step(step, names)
+        if clean:
+            steps.append(clean)
+
+    def make_handler(tool: dict):
+        def handle(args: dict) -> str:
+            given = str(args.get("input", "")).strip()
+            shown = given if len(given) <= CARD_INPUT_CHARS else given[:CARD_INPUT_CHARS] + "…"
+            if tool["permission"] == "deny":
+                record({"kind": "blocked", "rule": f"{tool['name']} 在方案里是禁止的操作，没有执行"})
+                return "这个操作被方案的权限规则禁止（deny），没有执行。"
+            if tool["permission"] == "ask":
+                who = str(args.get("who_confirms", "")).strip() or "负责人"
+                record({"kind": "ask_owner", "who": who, "action": f"{tool['name']}：{shown}"})
+                return (f"已提交给{who}确认，对方还没回复。确认之前不能当作这件事已经做完，"
+                        "也不要向使用者保证结果。")
+            budget = model.runner.budget
+            if budget.calls >= budget.max_calls - SIM_RESERVE_CALLS:
+                result = "（这次试玩的调用次数快用完了，这一步的结果没有模拟）"
+            else:
+                result = model.complete_json("chat_play_tool", load_prompt("chat_play_tool").format(
+                    tool=json.dumps(tool, ensure_ascii=False), given=given, prd=_prd_context(prd),
+                    transcript=history), SIM_SCHEMA)["result"].strip()
+            record({"kind": "tool", "tool": tool["name"], "input": shown, "result": result})
+            return result
+        return handle
+
+    def block(args: dict) -> str:
+        record({"kind": "blocked", "rule": str(args.get("rule", "")).strip()})
+        return "已记录。接下来告诉使用者为什么不能这么做。"
+
+    agent_tools = []
+    for tool in tools:
+        if tool["name"] in ("finish", "block_request"):
+            continue
+        props = {"input": {"type": "string", "description": tool["input"] or "这次要传的内容"}}
+        if tool["permission"] == "ask":
+            props["who_confirms"] = {"type": "string", "description": "要请谁确认，例如店主、用户本人"}
+        agent_tools.append(Tool(
+            tool["name"], f"{tool['output']}。副作用：{tool['side_effect'] or '无'}。权限：{tool['permission']}",
+            {"type": "object", "required": ["input"], "properties": props}, make_handler(tool)))
+    agent_tools.append(Tool("block_request", "使用者要你做越过规则或红线的事、你决定拒绝时调用，写清触发了哪条规则。",
+                            {"type": "object", "required": ["rule"], "properties": {"rule": {"type": "string"}}},
+                            block))
+    result = run_agent("chat_play_agent", load_prompt("chat_play_agent").format(system_prompt=design["system_prompt"]),
+                       load_prompt("chat_play_turn").format(transcript=history), agent_tools, REPLY_SCHEMA,
+                       model.runner, log=lambda _m: None, max_turns=AGENT_TURNS,
+                       text_result=lambda text: {"reply": text},
+                       finish_description="把这一轮要对使用者说的话交出来（reply）；也可以不调用它、直接用文字回复。",
+                       last_turn_hint="这一轮的动作到此为止，请直接回复使用者。")
+    return steps, str(result.get("reply") or "")
+
+
+def _scripted_events(design: dict, messages: list[Message], prd: str, model) -> Iterator[dict]:
+    """一次调用编出整轮动作和回复：离线演示、模型不支持工具、agent 失败时用。"""
     tools = _tools(design)
     prompt = load_prompt("chat_play").format(
         system_prompt=design["system_prompt"],
@@ -129,11 +224,6 @@ def play_events(plan: dict, messages: list[Message], prd: str, model) -> Iterato
         prd=_prd_context(prd), transcript=transcript(messages))
     turn = model.complete_json("chat_play", prompt, TURN_SCHEMA)
     names = {t["name"] for t in tools}
-    for raw in turn.get("steps") or []:
-        step = _clean_step(raw, names) if isinstance(raw, dict) else None
-        if step:
-            yield {"type": "data", "name": "play_step", "data": step}
-    reply = str(turn.get("reply") or "").strip()
-    # 旁白之后它可能这一轮不说话；直接留空界面上像是卡住了，明说一句
-    yield {"type": "text", "delta": reply or "（它这一轮没有对你说话）"}
-    yield {"type": "data", "name": "play_feedback", "data": {}}
+    steps = [step for raw in turn.get("steps") or []
+             if isinstance(raw, dict) and (step := _clean_step(raw, names))]
+    yield from _turn_events(steps, str(turn.get("reply") or ""))

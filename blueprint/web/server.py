@@ -94,10 +94,13 @@ class App:
 
     # -- 对话 ----------------------------------------------------------------
 
-    def chat_model(self):
+    def chat_model(self, max_calls: int = 4, max_tokens: int = 60_000):
         if not self.configured():
             raise ValueError("还没配置模型，先到「模型设置」填好 API Key。")
-        return chat.MockChat() if self.mock else chat.AnthropicChat()
+        if self.mock:
+            return chat.MockChat()
+        from blueprint.llm import AnthropicRunner, Budget
+        return chat.AnthropicChat(AnthropicRunner(budget=Budget(max_calls=max_calls, max_tokens=max_tokens)))
 
     def intake_chat(self, body: dict):
         model = self.chat_model()
@@ -135,7 +138,8 @@ class App:
 
     def play_chat(self, slug: str, body: dict):
         ws, plan = self._plan_for_play(slug)
-        model = self.chat_model()
+        # 试玩里 Agent 真的调用工具：自己最多 5 轮，每次 allow 调用另花一次模型编结果（实测一句话最多约 10 次）
+        model = self.chat_model(max_calls=16, max_tokens=200_000)
         return metered(ws, model, playground.play_events(plan, chat.parse_messages(body.get("messages")),
                                                          (ws / "PRD.md").read_text(encoding="utf-8"), model))
 

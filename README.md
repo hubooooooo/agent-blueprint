@@ -25,7 +25,7 @@
 
 <table>
 <tr><th align="left" width="26%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">你手上有</th><th align="left" width="22%">你说</th><th align="left" width="52%">你拿到</th></tr>
-<tr><td>💡 一个点子或半份 PRD</td><td>「帮我出个方案」</td><td><code>方案.md</code>：待确认问题、需求拆解、组件选型及理由、七层架构图、工具清单、系统提示词草案、独立审稿意见</td></tr>
+<tr><td>💡 一个点子或半份 PRD</td><td>「帮我出个方案」</td><td><code>方案.md</code>：待确认问题、需求拆解、组件选型及理由、七层架构图、工具清单、系统提示词草案、测试设计、独立审稿意见</td></tr>
 <tr><td>🔁 一个想认真做下去的产品</td><td>「按产品循环做，产品名 ……」</td><td><code>out/&lt;产品名&gt;/</code> 工作区：带版本的 PRD、方案、验证报告、迭代记录，之后每次加需求都在这里升版；代码骨架由你的 AI 按方案写进 <code>skeleton/</code></td></tr>
 <tr><td>🔍 一个已经写了的 Agent 项目</td><td>「检查这个项目缺什么」</td><td><code>差距报告.md</code>：缺哪些机制、先补什么、证据在哪一行 ＋ <code>本该有的PRD.md</code></td></tr>
 </table>
@@ -49,6 +49,20 @@ flowchart LR
 - **引擎**负责推导和记账：拆需求、按固定规则选组件、出方案、审稿、PRD 升版快照、记录每轮选型变化。浏览器界面里的「试玩」是引擎按方案模拟出来的对话，给你看看它大概会怎么表现；它不是代码，也不是产品原型，不能导出，不进交接包。
 - **AI 助手**负责写代码：按方案生成骨架，按迭代记录增量修改，只能写进 `out/<产品名>/skeleton/`。
 - **你**负责判断：回答待确认问题、亲手跑骨架、决定下一轮要什么。迭代记录里的「人工验证结论」只能由你来填。
+
+## 引擎里的 agent
+
+引擎外层是固定流程：步骤顺序写死，组件选型由规则计算，费用有上限。其中需要「自己判断下一步」的四处交给 agent，每一处都有代码兜底：
+
+<table>
+<tr><th align="left" width="18%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">环节</th><th align="left" width="44%">agent 做什么</th><th align="left" width="38%">代码守住什么</th></tr>
+<tr><td>新建产品的追问</td><td>自己判断还缺什么、问几轮；想法说完整了就不再问</td><td>目标、用户、核心闭环、红线四项都有了（或你说不确定）才能整理草稿；最多问 6 轮</td></tr>
+<tr><td>方案推导</td><td>写五要素和架构设计，可以查组件说明，交卷前自检</td><td>组件选型由规则算，agent 改不了；工具与选型对不上、降级场景或测试设计漏写，不改好不能交卷</td></tr>
+<tr><td>检查项目和骨架</td><td>自己翻代码，逐个核实组件，每条结论附读过的代码行</td><td>只读、只能看项目目录、不读 <code>.env</code> 和私钥；证据必须是真读过的文件和真实行号</td></tr>
+<tr><td>试玩</td><td>按方案里的提示词和工具清单真的调用工具，卡片边跑边出现</td><td>标了「禁止」的工具调不了，标了「要确认」的操作不会被当成已完成</td></tr>
+</table>
+
+agent 需要模型支持工具调用。模型不支持、调用出错或费用上限快用完时，这一步自动退回固定流程，报告或方案开头会写明原因，不会让你卡住。
 
 ## 先看效果
 
@@ -93,9 +107,9 @@ flowchart LR
 
 1. 「模型设置」里选服务商、粘贴 API Key，点「测试连接并保存」。
 2. 「新建产品」像聊天一样说出想法，AI 追问给谁用、怎么用、什么不能做，信息够了就停（想法说完整了就不再问，只说一句话的一般问三个左右），整理成需求草稿给你确认。确认后开始推导，进度直接显示在对话里。
-3. 推导完在产品页看方案：组件选型及理由、七层架构、工具清单、系统提示词、审稿意见。
+3. 推导完在产品页看方案：组件选型及理由、七层架构、工具清单、系统提示词、测试设计、审稿意见。
 4. 方案里还没想清楚的问题，在「回答问题」里一题一题答。问题都改成了大白话，只有工程师能判断的技术备注单独放着，不用你答；拿不准的点「帮我想想」，AI 给几个方向。答完自动写进 PRD 并重新推导。
-5. 在「试玩」里扮演自己产品的使用者（比如来问面包的顾客）和它聊几句，看它按现在的方案会怎么回应：查资料、通知店主这些动作都是模拟的，要先问人、按红线拦下的地方单独标出来。哪里不对就点回复下面的「这里不对」记下，最后一起带去「加新需求」。
+5. 在「试玩」里扮演自己产品的使用者（比如来问面包的顾客）和它聊几句，看它按现在的方案会怎么回应。它会按方案里的工具清单一步步做事，每做一步就多一张卡片；查资料、通知店主这些工具不会真的执行，结果是模拟的。方案里要先问人的操作会停下来等确认，禁止的操作调不了，这些地方都单独标出来。哪里不对就点回复下面的「这里不对」记下，最后一起带去「加新需求」。
 6. 点「导出交接包」，把 zip 发给帮你做产品的开发者：里面有需求、方案、还没定下来的问题、第一版组件的参考代码，以及一段交给 AI 编程工具的提示词。
 7. 有了新想法，在「加新需求」里说一句，AI 最多再问一个问题，整理成草稿给你确认；确认后需求文档升一版、方案重新推导，自动跳到「版本历史」，告诉你哪些组件的选型变了。每一版的需求文档都能回看。
 
@@ -159,7 +173,7 @@ bash setup.sh                         # 建虚拟环境、装依赖、生成 .en
 .venv/bin/python -m blueprint handoff out/酒馆搭子                 # 打包交接包，交给会写代码的人
 
 # 浏览器界面
-.venv/bin/python -m blueprint ui                                  # 默认 http://127.0.0.1:8765，只允许本机访问
+.venv/bin/python -m blueprint ui                                  # 默认 http://127.0.0.1:8765（被占用就往后找），只允许本机访问
 
 # 单次使用
 .venv/bin/python -m blueprint plan "一句话点子或 PRD 文件路径" -o out/my-plan
@@ -193,6 +207,22 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 
 各家完整的 Base URL 见 [.env.example](.env.example)。
 
+agent 需要模型支持工具调用。DeepSeek 实测支持；其他服务商或模型中转可以先测一下，三项都通过就能用 agent：
+
+```sh
+.venv/bin/python tools/probe_tools.py                          # 测 .env 里配的模型
+.venv/bin/python tools/probe_tools.py --model 模型名           # 换个模型测
+```
+
+几个开关，需要时在启动前设置：
+
+<table>
+<tr><th align="left" width="36%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">环境变量</th><th align="left" width="64%">作用</th></tr>
+<tr><td><code>BLUEPRINT_AGENT=off</code></td><td>推导方案、检查项目都不用 agent，走固定流程</td></tr>
+<tr><td><code>BLUEPRINT_PLAY_AGENT=off</code></td><td>试玩不用 agent，改为一次调用编出整轮（更快，但规矩只靠提示词约束）</td></tr>
+<tr><td><code>BLUEPRINT_TIMEOUT=300</code></td><td>单次请求超时秒数，默认 120；经中转的慢模型容易超时时调大</td></tr>
+</table>
+
 参考用量：
 
 <table>
@@ -200,6 +230,8 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 <tr><td>一份完整方案（agent 推导）</td><td>5–7 次</td><td>约 2.5–4 万</td></tr>
 <tr><td>一次反向检查（agent 读代码）</td><td>4–9 次</td><td>约 1–3 万</td></tr>
 <tr><td><code>revise --quick</code></td><td>1 次</td><td>约 0.5 万</td></tr>
+<tr><td>新建产品时追问一轮</td><td>2–4 次</td><td>约 0.1–0.3 万</td></tr>
+<tr><td>试玩里说一句话</td><td>2–9 次，看它要调几个工具</td><td>约 0.05–0.7 万</td></tr>
 </table>
 
 每次运行默认最多 40 次调用、150 万 tokens（检查项目加 `--fast` 时是 16 次、40 万），超出会停下并提示续跑，不会无限扣费。实际用量通常远低于上限。
@@ -257,6 +289,9 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 **结果靠谱吗？**
 特征判断在题库上的一致率约 90%，单次运行会有一两题波动。方案末尾的独立审稿有时会给出「未通过」，这是设计如此：审稿就是要把方案里的矛盾挑出来，这些意见就是你下一轮要回答的问题。agent 推导时会先按规则自检一遍，实测三道题都一次过审，但样本还小。反向报告默认由 agent 读代码核实，「信号覆盖率」按核实结果计算；它没有运行被检查的项目，所以仍然不是功能完成度。
 
+**我用的模型很便宜，或者不支持工具调用，会怎样？**
+不支持工具调用的模型会自动退回固定流程，照样能出方案和报告，只是少了 agent 的自检和核实，试玩里的规矩也只能靠提示词约束。支持工具调用的便宜模型反而更该用 agent：试玩里「禁止」「要确认」由代码保证，不靠模型听不听话。用 `tools/probe_tools.py` 可以先测一下。
+
 **Windows 能用吗？**
 引擎本身是纯 Python，但只在 macOS 和 Linux 上测试过。Windows 建议用 WSL 或方式二。s13、s15、s16 的参考实现依赖 `fcntl`，只能在 macOS 和 Linux 上运行。
 
@@ -268,14 +303,14 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 <tr><th align="left" width="24%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">位置</th><th align="left" width="76%">用途</th></tr>
 <tr><td><a href="使用引导.md">使用引导.md</a></td><td>用户入口：任务模板、产品循环、给 AI 的执行规则</td></tr>
 <tr><td><a href="BLUEPRINT.md">BLUEPRINT.md</a></td><td>五步推导、五要素、七层架构与组件选型表</td></tr>
-<tr><td><a href="blueprint/">blueprint/</a></td><td>引擎：需求拆解、规则选型、方案渲染、源码扫描、产品工作区；<code>web/</code> 是浏览器界面的服务端，<code>chat.py</code> 是界面里的几段对话，<code>playground.py</code> 是「试玩」</td></tr>
+<tr><td><a href="blueprint/">blueprint/</a></td><td>引擎：需求拆解、规则选型、方案渲染、源码扫描、产品工作区；<code>agent.py</code> 是 agent 循环，<code>intake_agent.py</code>、<code>plan_agent.py</code>、<code>audit_agent.py</code> 分别是追问、方案推导、检查用的 agent；<code>web/</code> 是浏览器界面的服务端，<code>chat.py</code> 是界面里的几段对话，<code>playground.py</code> 是「试玩」</td></tr>
 <tr><td><a href="web/">web/</a></td><td>浏览器界面源码（React + assistant-ui），构建产物提交在 <code>blueprint/web/static/</code></td></tr>
 <tr><td><code>s01</code>–<code>s17</code></td><td>17 个组件的说明、参考实现与图示</td></tr>
 <tr><td><a href="common/">common/</a></td><td>组件参考实现共用的启动层</td></tr>
 <tr><td><a href="scaffold/">scaffold/</a> · <a href="skills/">skills/</a></td><td>项目模板；构建 Agent、代码检查等技能</td></tr>
 <tr><td><a href="docs/">docs/</a></td><td>入门指南、真实输出示例、维护手册</td></tr>
-<tr><td><a href="evals/">evals/</a> · <a href="tests/">tests/</a></td><td>特征判断题库与回归测试</td></tr>
-<tr><td><a href="tools/">tools/</a></td><td>双击向导及其环境脚本、示例刷新、学生打包</td></tr>
+<tr><td><a href="evals/">evals/</a> · <a href="tests/">tests/</a></td><td>特征判断题库、反向检查题库（含两道关键词陷阱题）与回归测试</td></tr>
+<tr><td><a href="tools/">tools/</a></td><td>双击向导及其环境脚本、示例刷新、学生打包、测模型能否调用工具</td></tr>
 </table>
 
 ## 开发与维护
@@ -284,6 +319,7 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 .venv/bin/python -m pytest -q                 # 全部测试，不需要 Key
 .venv/bin/python -m blueprint eval            # 离线题库回归
 .venv/bin/python -m blueprint eval --real     # 真实模型特征一致率
+.venv/bin/python -m blueprint eval --real-audit --repeat 3   # 真实模型跑反向检查题库
 .venv/bin/python tools/refresh_examples.py    # 改提示词后重新生成示例
 .venv/bin/python tools/package_student.py     # 生成 dist/agent-blueprint-student.zip
 ```

@@ -60,17 +60,20 @@ def run_agent(stage: str, system: str, prompt: str, tools: list[Tool], result_sc
               log: Callable[[str], None] = print, max_turns: int = 30,
               check: Callable[[dict], list[str]] | None = None,
               describe: Callable[[str, dict], str] | None = None,
-              transcript: Path | None = None) -> dict:
+              transcript: Path | None = None,
+              finish_description: str = "调查完成时调用，提交最终结论。参数必须符合给定格式；不合格会被退回。",
+              last_turn_hint: str = "轮数或费用已用完。请立即调用 finish，用已掌握的信息交卷。") -> dict:
     """跑一个 agent 循环，返回 finish 的参数。
 
     check：schema 之外的业务校验（比如证据必须真实），返回错误列表，非空就退回重交。
     describe：把一次工具调用变成一句人话进度；None 时只打印工具名。
     transcript：每轮的模型输出和工具结果写进这个 jsonl，便于排查。
+    finish_description：交卷工具的说明，不同场景交的东西不同（结论、下一句话……）。
+    last_turn_hint：最后一轮（只剩 finish 可用）时提醒模型的话。
     """
     if not supports_agent(runner):
         raise AgentFailed("当前模型接入方式不支持工具调用")
-    finish = {"name": "finish", "description": "调查完成时调用，提交最终结论。参数必须符合给定格式；不合格会被退回。",
-              "input_schema": result_schema}
+    finish = {"name": "finish", "description": finish_description, "input_schema": result_schema}
     handlers = {t.name: t for t in tools}
     all_specs = [t.spec() for t in tools] + [finish]
     messages: list[dict] = [{"role": "user", "content": prompt}]
@@ -87,8 +90,7 @@ def run_agent(stage: str, system: str, prompt: str, tools: list[Tool], result_sc
     for turn in range(1, max_turns + 1):
         last = turn == max_turns or _budget_nearly_spent(budget)
         if last:
-            messages.append({"role": "user", "content": "调查轮数或费用已用完。请立即调用 finish，用已掌握的信息交卷；"
-                                                         "没核实到的组件判 weak 或 none，并在 note 里写明未核实。"})
+            _add_user_text(messages, last_turn_hint)
         response = runner.step(stage, system, messages, [finish] if last else all_specs)
         blocks = list(_get(response, "content", []) or [])
         # 思考过程、文字、工具调用原样放回历史：DeepSeek / MiniMax 的思考模式要求这样
@@ -161,6 +163,17 @@ def run_agent(stage: str, system: str, prompt: str, tools: list[Tool], result_sc
         if last:
             raise AgentFailed("轮数或费用用完后仍没有交出合格结果")
     raise AgentFailed(f"{max_turns} 轮内没有交卷")
+
+
+def _add_user_text(messages: list[dict], text: str) -> None:
+    """追加一段用户文字；上一条已是用户消息（工具结果）时并进去，避免连续两条用户消息。"""
+    last = messages[-1]
+    if last["role"] == "user" and isinstance(last["content"], list):
+        last["content"].append({"type": "text", "text": text})
+    elif last["role"] == "user":
+        last["content"] = f"{last['content']}\n\n{text}"
+    else:
+        messages.append({"role": "user", "content": text})
 
 
 def _text_json(blocks: list) -> dict | None:

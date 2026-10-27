@@ -1,7 +1,8 @@
-"""网页界面的三段对话：新建产品时的三轮追问、逐题回答方案里的待确认问题、给已有产品加新需求。
+"""网页界面的三段对话：新建产品时的追问、逐题回答方案里的待确认问题、给已有产品加新需求。
 
 无状态：前端每次把整段对话发过来，这里从对话里推出进行到哪一步，所以编辑、重新生成都不会错位。
-走到哪一步由代码决定，模型只负责措辞（追问、整理成需求草稿、帮用户想回答方向）。
+新建产品的追问由 agent 判断还缺什么、问几轮（blueprint/intake_agent.py）；离线演示或 agent 不可用时，
+退回固定三轮。其余两段走到哪一步由代码决定，模型只负责措辞。
 
 两个入口都是生成器，产出事件给网页逐条推送：
   {"type": "text", "delta": "..."}                  一段回复文字
@@ -15,7 +16,10 @@ import re
 from dataclasses import dataclass
 from typing import Iterable, Iterator, Protocol
 
+from blueprint.agent import supports_agent
+from blueprint.intake_agent import run_intake_agent
 from blueprint.knowledge import load_prompt
+from blueprint.llm import BudgetExceeded
 
 FINISH_INTAKE = "信息够了，帮我整理"
 FINISH_REVISE = "就这样，帮我整理"
@@ -24,7 +28,7 @@ HELP = "帮我想想"
 SKIP = "跳过这题"
 SAVE = "先保存已回答的"
 
-# 新建产品时的三轮追问，与 使用引导.md 里「让 AI 分三轮问」一致。
+# agent 不可用时的固定三轮追问，与 使用引导.md 里「让 AI 分三轮问」一致。
 INTAKE_ROUNDS = (
     "给谁用、解决什么问题、怎样算做成（有没有可以衡量的标准）。",
     "用户从输入到拿到结果，中间会经过哪些步骤；需要接哪些外部系统、数据或资料。",
@@ -152,13 +156,46 @@ class MockChat:
 
 
 # ---------------------------------------------------------------------------
-# 新建产品：三轮追问 → 整理成需求草稿
+# 新建产品：agent 追问（不可用时固定三轮）→ 整理成需求草稿
 # ---------------------------------------------------------------------------
+
+DRAFT_INTRO = "好，我把你说的整理成了一份需求草稿。看看对不对，可以直接改，确认后就开始推导方案："
+
 
 def intake_events(messages: list[Message], model: ChatModel) -> Iterator[dict]:
     said = [m.text.strip() for m in messages if m.role == "user"]
     if not said or not said[0]:
         raise ValueError("先说说你的想法")
+    runner = getattr(model, "runner", None)
+    if supports_agent(runner):
+        try:
+            result = run_intake_agent(transcript(messages, skip=(FINISH_INTAKE,)),
+                                      rounds_asked=sum(1 for m in messages if m.role == "assistant"),
+                                      user_wants_draft=said[-1] == FINISH_INTAKE, runner=runner)
+        except (BudgetExceeded, ValueError):
+            raise
+        except Exception:  # noqa: BLE001 —— agent 失败不能卡住用户，这一轮退回固定三轮
+            pass
+        else:
+            yield from _agent_events(result)
+            return
+    yield from _fixed_intake_events(messages, said, model)
+
+
+def _agent_events(result: dict) -> Iterator[dict]:
+    if result["action"] == "draft":
+        yield {"type": "text", "delta": DRAFT_INTRO}
+        yield {"type": "tool", "name": "confirm_product",
+               "args": {"name": result["name"].strip()[:40], "idea": result["idea"].strip()}}
+        return
+    text = result["question"].strip()
+    for i in range(0, len(text), 12):          # 问题是工具参数，不能边生成边显示，分段推送保持打字感
+        yield {"type": "text", "delta": text[i:i + 12]}
+    quick = [q.strip()[:30] for q in result.get("suggestions") or [] if q.strip()][:3]
+    yield {"type": "suggestions", "items": quick + [SKIP_INTAKE, FINISH_INTAKE]}
+
+
+def _fixed_intake_events(messages: list[Message], said: list[str], model: ChatModel) -> Iterator[dict]:
     answered = [t for t in said if t != FINISH_INTAKE]
     if said[-1] == FINISH_INTAKE or len(answered) > len(INTAKE_ROUNDS):
         yield from _summarize_intake(messages, model)
@@ -172,7 +209,7 @@ def intake_events(messages: list[Message], model: ChatModel) -> Iterator[dict]:
 
 
 def _summarize_intake(messages: list[Message], model: ChatModel) -> Iterator[dict]:
-    yield {"type": "text", "delta": "好，我把你说的整理成了一份需求草稿。看看对不对，可以直接改，确认后就开始推导方案："}
+    yield {"type": "text", "delta": DRAFT_INTRO}
     prompt = load_prompt("chat_intake_summarize").format(
         transcript=transcript(messages, skip=(FINISH_INTAKE, SKIP_INTAKE)))
     draft = model.complete_json("chat_summarize", prompt, SUMMARIZE_SCHEMA)

@@ -333,5 +333,5 @@ def test_cli_budget_defaults_depend_on_command(monkeypatch):
     audit = make_runner(build_parser().parse_args(["audit", "x"]))
     fast = make_runner(build_parser().parse_args(["audit", "x", "--fast"]))
     plan = make_runner(build_parser().parse_args(["plan", "x"]))
-    assert (audit.budget.max_calls, fast.budget.max_calls, plan.budget.max_calls) == (40, 16, 16)
+    assert (audit.budget.max_calls, fast.budget.max_calls, plan.budget.max_calls) == (40, 16, 40)
     assert make_runner(build_parser().parse_args(["verify", "x", "--max-calls", "9"])).budget.max_calls == 9

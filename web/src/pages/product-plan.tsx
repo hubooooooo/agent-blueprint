@@ -358,6 +358,15 @@ export function PromptTab({ plan }: { plan: Plan }) {
       <Section title="技术栈与部署形态">
         <p className="text-sm leading-relaxed whitespace-pre-wrap">{plan.tech_stack_and_deployment || "（空）"}</p>
       </Section>
+      {(plan.testing ?? []).length > 0 && (
+        <Section title="测试设计">
+          <ul className="space-y-1.5 text-sm">
+            {plan.testing.map((s, i) => (
+              <li key={i} className="flex gap-3"><span className="text-muted-foreground">—</span>{s}</li>
+            ))}
+          </ul>
+        </Section>
+      )}
     </div>
   )
 }

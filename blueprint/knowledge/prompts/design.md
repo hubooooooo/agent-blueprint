@@ -20,8 +20,10 @@
 3. context_memory_strategy：会话内如何管理上下文，跨会话是否持久化、持久化什么。
 4. security_and_degradation：3 到 8 条，每条形如「场景 → 处理方式」。必须覆盖：工具失败、模型幻觉、超时、越权。
 5. observability：logs / metrics 各 2 到 5 条，trajectory 一句话说明轨迹数据怎么记。
-6. tech_stack_and_deployment：第一版的部署形态（单进程 / 服务 / 团队）、语言、模型来源。
-7. open_questions：设计过程中发现的新的待确认问题（可为空数组）。
+6. tech_stack_and_deployment：第一版的部署形态（单进程 / 服务 / 团队）、语言、模型来源，以及一条命令怎么启动、配置与密钥怎么外置（如 .env / config）。
+7. testing：2 到 6 条测试设计，至少覆盖核心循环与工具分派的单元测试、权限与安全边界的测试（写清要测哪些拦截或红线）。
+8. open_questions：设计过程中发现的新的待确认问题（可为空数组）。
+9. 原始需求没给的具体数值（阈值、次数、年龄、时长……）不要自己定；需要时写成「（假设，待确认）」并放进 open_questions。
 {review_feedback}
 
 ## 输出 JSON 结构
@@ -32,5 +34,6 @@
   "security_and_degradation": ["..."],
   "observability": {{"logs": ["..."], "metrics": ["..."], "trajectory": "..."}},
   "tech_stack_and_deployment": "...",
+  "testing": ["..."],
   "open_questions": ["..."]
 }}

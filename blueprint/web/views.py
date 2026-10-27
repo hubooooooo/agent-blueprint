@@ -99,6 +99,7 @@ def plan_view(plan: dict, ws: Path | None = None) -> dict:
         "security_and_degradation": design.get("security_and_degradation", []),
         "observability": design.get("observability", {}),
         "tech_stack_and_deployment": design.get("tech_stack_and_deployment", ""),
+        "testing": design.get("testing", []),
         "review": plan.get("review", {}),
         "design_attempts": plan.get("design_attempts", 1),
         "budget": plan.get("budget", {}),

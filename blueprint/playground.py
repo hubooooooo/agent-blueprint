@@ -27,7 +27,7 @@ import threading
 from pathlib import Path
 from typing import Callable, Iterator
 
-from blueprint.agent import Tool, run_agent, supports_agent
+from blueprint.agent import Hook, Tool, run_agent, supports_agent
 from blueprint.chat import Message, _prd_context, transcript
 from blueprint.knowledge import load_prompt
 from blueprint.llm import BudgetExceeded
@@ -200,18 +200,26 @@ def _agent_turn(design: dict, messages: list[Message], prd: str, model,
             steps.append(clean)
             on_step(clean)
 
+    def shown(args: dict) -> str:
+        given = str(args.get("input", "")).strip()
+        return given if len(given) <= CARD_INPUT_CHARS else given[:CARD_INPUT_CHARS] + "…"
+
+    def permission(name: str, args: dict) -> str | None:
+        """方案里的权限由这个钩子在工具执行前处理：deny 拦下，ask 转给人确认，allow 放行。"""
+        tool = by_name.get(name)
+        if tool is None or tool["permission"] not in ("deny", "ask"):
+            return None
+        if tool["permission"] == "deny":
+            record({"kind": "blocked", "rule": f"{name} 在方案里是禁止的操作，没有执行"})
+            return "这个操作被方案的权限规则禁止（deny），没有执行。"
+        who = str(args.get("who_confirms", "")).strip() or "负责人"
+        record({"kind": "ask_owner", "who": who, "action": f"{name}：{shown(args)}"})
+        return (f"已提交给{who}确认，对方还没回复。确认之前不能当作这件事已经做完，"
+                "也不要向使用者保证结果。")
+
     def make_handler(tool: dict):
         def handle(args: dict) -> str:
             given = str(args.get("input", "")).strip()
-            shown = given if len(given) <= CARD_INPUT_CHARS else given[:CARD_INPUT_CHARS] + "…"
-            if tool["permission"] == "deny":
-                record({"kind": "blocked", "rule": f"{tool['name']} 在方案里是禁止的操作，没有执行"})
-                return "这个操作被方案的权限规则禁止（deny），没有执行。"
-            if tool["permission"] == "ask":
-                who = str(args.get("who_confirms", "")).strip() or "负责人"
-                record({"kind": "ask_owner", "who": who, "action": f"{tool['name']}：{shown}"})
-                return (f"已提交给{who}确认，对方还没回复。确认之前不能当作这件事已经做完，"
-                        "也不要向使用者保证结果。")
             budget = model.runner.budget
             if budget.calls >= budget.max_calls - SIM_RESERVE_CALLS:
                 result = "（这次试玩的调用次数快用完了，这一步的结果没有模拟）"
@@ -219,7 +227,7 @@ def _agent_turn(design: dict, messages: list[Message], prd: str, model,
                 result = model.complete_json("chat_play_tool", load_prompt("chat_play_tool").format(
                     tool=json.dumps(tool, ensure_ascii=False), given=given, prd=_prd_context(prd),
                     transcript=history), SIM_SCHEMA)["result"].strip()
-            record({"kind": "tool", "tool": tool["name"], "input": shown, "result": result})
+            record({"kind": "tool", "tool": tool["name"], "input": shown(args), "result": result})
             return result
         return handle
 
@@ -227,6 +235,7 @@ def _agent_turn(design: dict, messages: list[Message], prd: str, model,
         record({"kind": "blocked", "rule": str(args.get("rule", "")).strip()})
         return "已记录。接下来告诉使用者为什么不能这么做。"
 
+    by_name: dict[str, dict] = {}
     agent_tools = []
     for tool in tools:
         if tool["name"] in ("finish", "block_request"):
@@ -234,6 +243,7 @@ def _agent_turn(design: dict, messages: list[Message], prd: str, model,
         props = {"input": {"type": "string", "description": tool["input"] or "这次要传的内容"}}
         if tool["permission"] == "ask":
             props["who_confirms"] = {"type": "string", "description": "要请谁确认，例如店主、用户本人"}
+        by_name[tool["name"]] = tool
         agent_tools.append(Tool(
             tool["name"], f"{tool['output']}。副作用：{tool['side_effect'] or '无'}。权限：{tool['permission']}",
             {"type": "object", "required": ["input"], "properties": props}, make_handler(tool)))
@@ -243,7 +253,7 @@ def _agent_turn(design: dict, messages: list[Message], prd: str, model,
     result = run_agent("chat_play_agent", load_prompt("chat_play_agent").format(system_prompt=design["system_prompt"]),
                        load_prompt("chat_play_turn").format(transcript=history), agent_tools, REPLY_SCHEMA,
                        model.runner, log=lambda _m: None, max_turns=AGENT_TURNS,
-                       text_result=lambda text: {"reply": text},
+                       text_result=lambda text: {"reply": text}, hooks=[Hook(before_tool=permission)],
                        finish_description="把这一轮要对使用者说的话交出来（reply）；也可以不调用它、直接用文字回复。",
                        last_turn_hint="这一轮的动作到此为止，请直接回复使用者。")
     return steps, str(result.get("reply") or "")

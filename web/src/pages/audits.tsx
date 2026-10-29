@@ -2,7 +2,7 @@ import { ArrowRightIcon, FolderOpenIcon, FolderSearchIcon, RefreshCwIcon, ScaleI
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 
-import { Callout, Chip, ModeCallouts, Screen, ScrollBody, TopBar, timeAgo, useSettings, useShell } from "@/components/common"
+import { Callout, Chip, ModeCallouts, READING, Screen, ScrollBody, TopBar, timeAgo, useSettings, useShell } from "@/components/common"
 import { AUDIT_STAGES, AUDIT_WORDING, JobProgress, useJob } from "@/components/job-progress"
 import { Markdown } from "@/components/markdown"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,26 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { api, type AuditDetail, type AuditMode, type AuditSummary, type Job } from "@/lib/api"
 import { auditHref } from "@/lib/route"
+
+/** 删掉表头含 header 的那张表的最后一列。 */
+function dropLastColumn(md: string, header: string) {
+  let inTable = false
+  return md
+    .split("\n")
+    .map((line) => {
+      if (line.startsWith("|") && line.includes(`| ${header} |`)) inTable = true
+      else if (!line.startsWith("|")) inTable = false
+      return inTable ? line.replace(/\|[^|]*\|\s*$/, "|") : line
+    })
+    .join("\n")
+}
+
+/** 报告文件终端和网页共用，网页上做三处删减：大标题和「一句话判定」上面的摘要卡片已经有了；
+ *  「去哪看」是引擎里组件教程的路径，给用命令行的开发者看的，网页上点不开，还会把表格挤窄。 */
+function reportBody(report: string) {
+  const body = report.replace(/^# .*\n+/, "").replace(/## 一句话判定\n[\s\S]*?(?=\n## )/, "")
+  return dropLastColumn(body, "去哪看")
+}
 
 const pct = (x: number | null) => (x == null ? "" : `${Math.round(x * 100)}%`)
 
@@ -279,7 +299,7 @@ function AuditView({ audit, tab, reload }: { audit: AuditDetail; tab: string; re
   return (
     <Screen>
       {bar}
-      <ScrollBody className="max-w-4xl">
+      <ScrollBody className={READING}>
         <ModeCallouts />
         {progress}
         {!audit.finished && !job && (
@@ -304,7 +324,7 @@ function AuditView({ audit, tab, reload }: { audit: AuditDetail; tab: string; re
             </div>
             <div className="mt-5">
               {active === "report" ? (
-                <Markdown text={audit.report} />
+                <Markdown text={reportBody(audit.report)} />
               ) : (
                 <>
                   <p className="mb-4 text-sm text-muted-foreground">

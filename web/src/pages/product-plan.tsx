@@ -1,13 +1,17 @@
 import { ArrowRightIcon, CopyIcon, DownloadIcon } from "lucide-react"
-import { useState, type ReactNode } from "react"
+import { Fragment, useState, type ReactNode } from "react"
 import { toast } from "sonner"
 
 import { Chip, DECISIONS, Eyebrow } from "@/components/common"
+import { Bullets, Clamp, RichText } from "@/components/rich-text"
 import { Button } from "@/components/ui/button"
 import { handoffUrl, type Plan, type Question } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 // 方案的五个标签页，数据来自 blueprint/web/views.py 的 plan_view。
+// 版式规则见 docs/维护手册.md「阅读版式」：正文用 PROSE；模型给的列表按列表显示，不拼成一段。
+
+const PROSE = "text-[0.9375rem] leading-[1.8]"
 
 function Section({ title, aside, children, className }: { title: ReactNode; aside?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -44,13 +48,27 @@ function Ledger({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
           {rows.map((r, i) => (
             <tr key={i} className="border-b last:border-b-0">
               {r.map((c, j) => (
-                <td key={j} className="px-3 py-2.5 align-top first:ps-4 sm:first:ps-0">{c}</td>
+                <td key={j} className="px-3 py-2.5 align-top wrap-break-word first:ps-4 sm:first:ps-0">{c}</td>
               ))}
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  )
+}
+
+/** 左边小标题、右边内容（多是条目列表）；窄屏时上下排。 */
+function Labeled({ rows }: { rows: [string, ReactNode][] }) {
+  return (
+    <dl className="divide-y">
+      {rows.map(([label, content]) => (
+        <div key={label} className="grid gap-x-5 gap-y-1 py-3 text-sm leading-[1.8] first:pt-0 sm:grid-cols-[4rem_minmax(0,1fr)]">
+          <dt className="font-medium">{label}</dt>
+          <dd className="min-w-0">{content}</dd>
+        </div>
+      ))}
+    </dl>
   )
 }
 
@@ -168,7 +186,7 @@ export function OverviewTab({
     <div className="grid gap-x-8 gap-y-6 xl:grid-cols-[minmax(0,1fr)_17rem]">
       <div className="min-w-0">
         <Section title={<span className="flex items-center gap-2">产品定位 <ReviewChip review={plan.review} /></span>}>
-          <p className="max-w-3xl leading-relaxed">{plan.one_liner || plan.title}</p>
+          <p className="leading-[1.8]">{plan.one_liner || plan.title}</p>
         </Section>
 
         <Section
@@ -241,13 +259,13 @@ export function ComponentsTab({ plan }: { plan: Plan }) {
           >
             <div className="divide-y rounded-lg border bg-card">
               {items.map((c) => (
-                <div key={c.id} className="grid gap-x-6 gap-y-0.5 px-4 py-2.5 text-sm sm:grid-cols-[14rem_1fr]">
+                <div key={c.id} className="grid gap-x-5 gap-y-0.5 px-4 py-2.5 text-sm sm:grid-cols-[12rem_minmax(0,1fr)]">
                   <div className="flex items-baseline gap-2">
                     <span className="font-mono text-xs text-muted-foreground">{c.id}</span>
                     <span className={cn("font-medium", d.tone === "muted" && "text-muted-foreground")}>{c.name}</span>
                     <span className="text-xs text-muted-foreground">{c.domain}</span>
                   </div>
-                  <p className="text-muted-foreground">{c.reason}</p>
+                  <p className="leading-[1.8] text-muted-foreground wrap-anywhere">{c.reason}</p>
                 </div>
               ))}
             </div>
@@ -268,13 +286,13 @@ export function ArchitectureTab({ plan }: { plan: Plan }) {
           {plan.layers.map((l) => (
             <div
               key={l.num}
-              className={cn("grid gap-1 border-b px-4 py-3 last:border-b-0 sm:grid-cols-[12rem_1fr] sm:gap-6", l.num === "③" && "bg-muted/60")}
+              className={cn("grid gap-1 border-b px-4 py-3 last:border-b-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-5", l.num === "③" && "bg-muted/60")}
             >
               <div>
                 <div className="font-medium">{l.num} {l.name}</div>
                 <div className="text-xs text-muted-foreground">{l.question}</div>
               </div>
-              <div className="text-sm sm:self-center">{l.detail}</div>
+              <div className="min-w-0 text-sm leading-[1.8] sm:self-center"><Clamp text={l.detail} /></div>
             </div>
           ))}
         </div>
@@ -282,31 +300,38 @@ export function ArchitectureTab({ plan }: { plan: Plan }) {
 
       <Section title="工具清单" aside={<span className="font-mono text-sm text-muted-foreground">{plan.tool_list.length}</span>}>
         {plan.tool_list.length ? (
-          <Ledger
-            head={["工具", "输入", "输出", "副作用", "权限", "层"]}
-            rows={plan.tool_list.map((t) => {
+          <div className="divide-y rounded-lg border bg-card">
+            {plan.tool_list.map((t) => {
               const [label, tone] = PERMISSION[t.permission] ?? [t.permission, "muted"]
-              return [
-                <code className="font-mono text-xs">{t.name}</code>,
-                t.input,
-                t.output,
-                t.side_effect,
-                <Chip tone={tone}>{label}</Chip>,
-                t.layer,
-              ]
+              return (
+                <div key={t.name} className="px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <code className="font-mono text-sm font-medium wrap-anywhere">{t.name}</code>
+                    <Chip tone={tone}>{label}</Chip>
+                    {t.layer && <span className="text-xs text-muted-foreground">第 {t.layer} 层</span>}
+                  </div>
+                  <dl className="mt-2 grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm leading-[1.8]">
+                    {([["输入", t.input], ["输出", t.output], ["副作用", t.side_effect]] as const).map(([k, v]) => (
+                      <Fragment key={k}>
+                        <dt className="text-muted-foreground">{k}</dt>
+                        <dd className="wrap-anywhere">{v || "—"}</dd>
+                      </Fragment>
+                    ))}
+                  </dl>
+                </div>
+              )
             })}
-          />
+          </div>
         ) : (
           <p className="text-muted-foreground">（没有生成工具清单）</p>
         )}
       </Section>
 
       <Section title="五要素">
-        <Ledger
-          head={["要素", "内容"]}
+        <Labeled
           rows={plan.elements.map((e) => [
-            <span className="font-medium whitespace-nowrap">{e.label}</span>,
-            e.items.length ? e.items.join("；") : <span className="text-muted-foreground">（待补充）</span>,
+            e.label,
+            e.items.length ? <Bullets items={e.items} /> : <span className="text-muted-foreground">（待补充）</span>,
           ])}
         />
       </Section>
@@ -336,35 +361,26 @@ export function PromptTab({ plan }: { plan: Plan }) {
         </pre>
       </Section>
       <Section title="上下文与记忆策略">
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">{plan.context_memory_strategy || "（空）"}</p>
+        <RichText text={plan.context_memory_strategy} className={PROSE} />
       </Section>
       <Section title="安全边界与降级策略">
-        <ul className="space-y-1.5 text-sm">
-          {plan.security_and_degradation.map((s, i) => (
-            <li key={i} className="flex gap-3"><span className="text-muted-foreground">—</span>{s}</li>
-          ))}
-        </ul>
+        <Bullets items={plan.security_and_degradation} className={PROSE} />
       </Section>
       <Section title="可观测性">
-        <Ledger
-          head={["类别", "内容"]}
+        <Labeled
           rows={[
-            ["日志", (obs.logs ?? []).join("；")],
-            ["指标", (obs.metrics ?? []).join("；")],
-            ["轨迹", obs.trajectory ?? ""],
+            ["日志", <Bullets items={obs.logs ?? []} />],
+            ["指标", <Bullets items={obs.metrics ?? []} />],
+            ["轨迹", <RichText text={obs.trajectory ?? ""} />],
           ]}
         />
       </Section>
       <Section title="技术栈与部署形态">
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">{plan.tech_stack_and_deployment || "（空）"}</p>
+        <RichText text={plan.tech_stack_and_deployment} className={PROSE} />
       </Section>
       {(plan.testing ?? []).length > 0 && (
         <Section title="测试设计">
-          <ul className="space-y-1.5 text-sm">
-            {plan.testing.map((s, i) => (
-              <li key={i} className="flex gap-3"><span className="text-muted-foreground">—</span>{s}</li>
-            ))}
-          </ul>
+          <Bullets items={plan.testing} className={PROSE} />
         </Section>
       )}
     </div>
@@ -378,8 +394,8 @@ export function ReviewTab({ plan }: { plan: Plan }) {
   return (
     <div>
       <Section title={<span className="flex items-center gap-3">独立审稿 <ReviewChip review={r} /></span>} className="border-t-0 pt-0">
-        <p className="max-w-3xl text-sm leading-relaxed">{r.summary}</p>
-        <p className="mt-3 max-w-3xl text-sm text-muted-foreground">
+        <p className={PROSE}>{r.summary}</p>
+        <p className="mt-3 text-sm leading-[1.8] text-muted-foreground">
           审稿经常给出「未通过」，这是设计如此：审稿就是要把方案里的矛盾挑出来，这些意见就是你下一轮要想清楚的问题。
         </p>
       </Section>
@@ -389,11 +405,11 @@ export function ReviewTab({ plan }: { plan: Plan }) {
             {r.issues.map((i, n) => {
               const [label, tone] = SEVERITY[i.severity ?? "low"] ?? ["意见", "muted"]
               return (
-                <li key={n} className="grid gap-2 border-t py-3 first:border-t-0 sm:grid-cols-[4rem_1fr]">
+                <li key={n} className="grid gap-2 border-t py-3 first:border-t-0 sm:grid-cols-[3.5rem_minmax(0,1fr)]">
                   <div><Chip tone={tone}>{label}</Chip></div>
-                  <div>
-                    <div className="text-sm font-medium">{i.section}</div>
-                    <div className="text-sm text-muted-foreground">{i.problem}</div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium wrap-anywhere">{i.section}</div>
+                    <div className="mt-0.5 text-sm leading-[1.8] text-muted-foreground wrap-anywhere">{i.problem}</div>
                   </div>
                 </li>
               )

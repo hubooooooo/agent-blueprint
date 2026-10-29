@@ -198,7 +198,8 @@
 }
 
 /* 文档阅读样式（PRD 原文等） */
-.doc { line-height: 1.75; font-size: 0.95rem; }
+.doc { line-height: 1.8; font-size: 0.9375rem; }
+.doc p, .doc li, .doc blockquote { overflow-wrap: anywhere; }
 .doc > * + * { margin-top: 0.85em; }
 .doc h1 { font-size: 1.5rem; font-weight: 600; }
 .doc h2 { font-size: 1.15rem; font-weight: 600; margin-top: 1.8em; padding-top: 0.8em; border-top: 1px solid var(--border); }
@@ -208,7 +209,7 @@
 .doc li + li { margin-top: 0.25em; }
 .doc code { font-family: var(--font-mono); font-size: 0.85em; background: var(--muted); padding: 0.1em 0.35em; border-radius: 4px; overflow-wrap: anywhere; }
 .doc table { width: 100%; border-collapse: collapse; font-size: 0.9em; display: block; overflow-x: auto; }
-.doc th, .doc td { border-bottom: 1px solid var(--border); padding: 0.4em 0.6em; text-align: left; vertical-align: top; }
+.doc th, .doc td { border-bottom: 1px solid var(--border); padding: 0.45em 0.6em; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 .doc td:first-child, .doc th:first-child { white-space: nowrap; }
 .doc th { font-family: var(--font-mono); font-weight: 400; font-size: 0.8em; color: var(--muted-foreground); }
 .doc blockquote { border-left: 2px solid var(--border); padding-left: 1em; color: var(--muted-foreground); }

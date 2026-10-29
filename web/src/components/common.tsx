@@ -56,6 +56,9 @@ export function Screen({ children }: { children: ReactNode }) {
   return <div className="flex min-h-0 flex-1 flex-col">{children}</div>
 }
 
+/** 以文字为主的页面的内容宽度：正文一行四十多个字，再宽就难读了。 */
+export const READING = "max-w-[44rem]"
+
 /** 可滚动的内容区。 */
 export function ScrollBody({ children, className }: { children: ReactNode; className?: string }) {
   return (

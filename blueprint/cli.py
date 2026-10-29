@@ -1,8 +1,8 @@
 """命令行入口。
 
   python -m blueprint plan   idea.md [-o out/xxx] [--mock] [--resume]
-  python -m blueprint audit  ./project [--prd prd.md] [-o out/xxx] [--mock] [--fast]
-  python -m blueprint eval   [--real] [--real-audit [--repeat 3]]
+  python -m blueprint audit  ./project [--prd prd.md] [-o out/xxx] [--mock] [--fast] [--rejudge]
+  python -m blueprint eval   [--real] [--real-audit] [--repeat 3]
 
   产品循环（全部在 out/<产品名>/ 里）：
   python -m blueprint init   "<产品名>" "<一句话点子>" [--plan]
@@ -77,7 +77,7 @@ def cmd_audit(args) -> int:
     from blueprint.reverse import run_audit
     print(f"反向审计：{project} → {out_dir}")
     audit, doc = run_audit(project, make_runner(args), out_dir, prd_text=prd_text, resume=args.resume,
-                           fast=args.fast)
+                           fast=args.fast, rejudge=args.rejudge)
     print(f"\n✅ 差距报告已生成：{doc}")
     print(f"   必选组件信号覆盖率 {int(audit.completion * 100)}%")
     return 0
@@ -187,6 +187,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("project", help="项目目录")
     sp.add_argument("--prd", help="可选：对照的 PRD 文件")
     sp.add_argument("--fast", action="store_true", help="快速扫描：不让 agent 读代码，只按关键词判断（省钱，但可能误判）")
+    sp.add_argument("--rejudge", action="store_true",
+                    help="重新判断项目该有哪些机制；默认沿用同一输出目录里上次检查的判断，免得两次结果因模型波动而不同")
     common(sp)
     sp.set_defaults(func=cmd_audit)
 
@@ -207,7 +209,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("workspace", help="工作区目录，如 out/<产品名>")
     sp.add_argument("requirement", help="新需求文本，或文件路径")
     sp.add_argument("--no-plan", action="store_true", help="只升版 PRD 和记录，不重推方案")
-    sp.add_argument("--quick", action="store_true", help="只重跑需求拆解与选型（1 次调用），不重做架构设计与审稿")
+    sp.add_argument("--quick", action="store_true", help="只重跑需求拆解与选型（含特征复核，最多 3 次调用），不重做架构设计与审稿")
     model_opts(sp)
     sp.set_defaults(func=cmd_revise)
 
@@ -231,7 +233,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("eval", help="跑测试题（默认离线）")
     sp.add_argument("--real", action="store_true", help="用真实模型跑正向测试题并统计特征判断准确率")
     sp.add_argument("--real-audit", action="store_true", help="用真实模型（agent）跑反向检查测试题")
-    sp.add_argument("--repeat", type=int, default=1, help="--real-audit 时每题跑几次")
+    sp.add_argument("--repeat", type=int, default=1, help="--real / --real-audit 时每题跑几次")
     common(sp)
     sp.set_defaults(func=cmd_eval)
 

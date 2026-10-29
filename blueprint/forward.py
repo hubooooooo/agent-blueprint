@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from blueprint import vote
 from blueprint.agent import supports_agent
 from blueprint.knowledge import (ACCEPTANCE, EIGHT_QUESTIONS, FACT_KEYS, FEATURES, FIVE_ELEMENTS,
                                  load_prompt)
@@ -15,7 +16,7 @@ from blueprint.llm import BudgetExceeded, Runner
 from blueprint.pipeline import StageRunner
 from blueprint.render import render_plan
 from blueprint.rules import select_components
-from blueprint.schema import DESIGN_SCHEMA, EXTRACT_SCHEMA, MODEL_SCHEMA, REVIEW_SCHEMA
+from blueprint.schema import DESIGN_SCHEMA, EXTRACT_SCHEMA, FEATURE_IDS, MODEL_SCHEMA, REVIEW_SCHEMA
 
 
 @dataclass
@@ -82,6 +83,18 @@ def _dump(data) -> str:
 AGENT_RESERVE_CALLS = 3        # agent 之后还要留给审稿、重写后的复审等的调用次数
 
 
+def vote_on_features(features: dict, material: str, stages: StageRunner,
+                     log: Callable[[str], None] = print, label: str = "① 复核特征判断") -> dict:
+    """另外独立判断两次特征，三票取多数（见 blueprint/vote.py）；不该投票时原样返回。"""
+    if not vote.enabled(stages.runner):
+        return features
+    others = vote.cast(material, lambda stage, prompt, schema: stages.run(stage, prompt, schema, label))
+    voted, changes = vote.majority(features, others)
+    stages.save_json("stages/vote_features.json", {"original": features, "others": others, "changes": changes})
+    log("    特征判断三次取多数：" + ("；".join(changes) if changes else "三次一致或多数同原判断"))
+    return voted
+
+
 def _agent_plan(runner: Runner) -> tuple[bool, str]:
     """要不要用 agent，以及不用时写进方案的原因（离线 mock 本来就没有 agent，不写原因）。"""
     if os.getenv("BLUEPRINT_AGENT", "").strip().lower() in ("off", "0", "false"):
@@ -122,6 +135,8 @@ def run_plan(input_text: str, runner: Runner, out_dir: Path, resume: bool = Fals
     extract = stages.run("extract", load_prompt("extract").format(
         fact_keys=_fmt_fact_keys(), features=_fmt_features(),
         questions=_fmt_questions(), input=input_text), EXTRACT_SCHEMA, "① 需求拆解")
+    if set(feature_overrides or {}) < set(FEATURE_IDS):     # 全部沿用上一版时没有要重新判断的特征
+        extract = {**extract, "features": vote_on_features(extract.get("features", {}), input_text, stages, log)}
     if feature_overrides:
         extract = {**extract, "features": {**extract.get("features", {}), **feature_overrides}}
 

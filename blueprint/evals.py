@@ -4,8 +4,9 @@
   1. 规则回归：expected.features → select_components == expected.components
   2. 管线回归：mock 跑通正向三题、反向两题，文档必须包含关键章节；
      并守住下限：标准答案判「放弃」的组件，mock 不得判成必选/二期
-真模型（--real）：
-  正向三题各跑一次「需求拆解」，统计特征判断与标准答案的一致率；不跑后续阶段以省钱。
+真模型（--real [--repeat N]）：
+  正向三题各跑 N 次「需求拆解」（含特征多数票），统计特征判断与标准答案的一致率，单次判断与取多数分开统计；
+  N > 1 时再统计多次运行之间不一致的特征数。不跑后续阶段以省钱。
 真模型反向（--real-audit [--repeat N]）：
   反向各题用 agent 完整跑检查，核对组件强弱；agent_only 的题（关键词陷阱）只在这里判对错。
 """
@@ -131,38 +132,56 @@ def run_evals(real: bool = False, runner_factory: Callable[[], object] | None = 
         if real:
             if runner_factory is None:
                 raise ValueError("real 模式需要 runner_factory")
-            print("== 真实模型：特征判断准确率（只跑需求拆解）==")
+            print(f"== 真实模型：特征判断准确率（只跑需求拆解，每题 {repeat} 次）==")
+            from blueprint import vote
             from blueprint.forward import _fmt_fact_keys, _fmt_features, _fmt_questions
             from blueprint.knowledge import load_prompt
             from blueprint.pipeline import SYSTEM
             from blueprint.schema import EXTRACT_SCHEMA
-            total = 0
-            agree = 0
+            total = agree = single_agree = 0
+            flips = single_flips = features_seen = 0
             for case in forward_cases():
-                runner = runner_factory()
                 text = (case / "input.md").read_text(encoding="utf-8")
-                expected = json.loads((case / "expected.json").read_text(encoding="utf-8"))["features"]
-                got = runner.complete("extract", SYSTEM, load_prompt("extract").format(
-                    fact_keys=_fmt_fact_keys(), features=_fmt_features(),
-                    questions=_fmt_questions(), input=text), EXTRACT_SCHEMA)
-                diffs = []
-                feature_agree = 0
-                unknown_text = " ".join(got.get("unknowns", []))
-                for kw in json.loads((case / "expected.json").read_text(encoding="utf-8")).get("must_be_unknown_or_pending", []):
-                    if kw not in unknown_text:
-                        diffs.append(f"待确认清单应提到「{kw}」")
-                for fid, want in expected.items():
-                    total += 1
-                    have = got.get("features", {}).get(fid, {}).get("value")
-                    if have == want:
-                        agree += 1
-                        feature_agree += 1
-                    else:
-                        diffs.append(f"{fid}: 期望 {want}，模型 {have}")
-                failures += bool(diffs)
-                print(f"  {case.name}: {feature_agree}/{len(expected)}" + ("" if not diffs else "\n     - " + "\n     - ".join(diffs)))
-                (tmp / f"real-{case.name}.json").write_text(json.dumps(got, ensure_ascii=False, indent=2), encoding="utf-8")
-            print(f"  特征一致率：{agree}/{total} = {agree / total:.0%}")
+                answer = json.loads((case / "expected.json").read_text(encoding="utf-8"))
+                expected = answer["features"]
+                singles, voteds = [], []
+                for i in range(1, repeat + 1):
+                    runner = runner_factory()
+                    got = runner.complete("extract", SYSTEM, load_prompt("extract").format(
+                        fact_keys=_fmt_fact_keys(), features=_fmt_features(),
+                        questions=_fmt_questions(), input=text), EXTRACT_SCHEMA)
+                    single = {fid: (got.get("features", {}).get(fid) or {}).get("value") for fid in expected}
+                    voted = single
+                    if vote.enabled(runner):
+                        others = vote.cast(text, lambda stage, prompt, schema: runner.complete(stage, SYSTEM, prompt, schema))
+                        voted = {fid: v["value"] for fid, v in vote.majority(got.get("features", {}), others)[0].items()}
+                    singles.append(single)
+                    voteds.append(voted)
+                    diffs = []
+                    unknown_text = " ".join(got.get("unknowns", []))
+                    for kw in answer.get("must_be_unknown_or_pending", []):
+                        if kw not in unknown_text:
+                            diffs.append(f"待确认清单应提到「{kw}」")
+                    feature_agree = 0
+                    for fid, want in expected.items():
+                        total += 1
+                        single_agree += single[fid] == want
+                        if voted[fid] == want:
+                            agree += 1
+                            feature_agree += 1
+                        else:
+                            diffs.append(f"{fid}: 期望 {want}，模型 {voted[fid]}"
+                                         + (f"（单次判断 {single[fid]}）" if single[fid] != voted[fid] else ""))
+                    failures += bool(diffs)
+                    print(f"  {case.name} #{i}: {feature_agree}/{len(expected)}" + ("" if not diffs else "\n     - " + "\n     - ".join(diffs)))
+                    (tmp / f"real-{case.name}-{i}.json").write_text(json.dumps(
+                        {**got, "voted_features": voted}, ensure_ascii=False, indent=2), encoding="utf-8")
+                features_seen += len(expected)
+                flips += sum(len({v[fid] for v in voteds}) > 1 for fid in expected)
+                single_flips += sum(len({v[fid] for v in singles}) > 1 for fid in expected)
+            print(f"  特征一致率：取多数 {agree}/{total} = {agree / total:.0%}；单次判断 {single_agree}/{total} = {single_agree / total:.0%}")
+            if repeat > 1:
+                print(f"  多次运行结果不一致的特征：取多数 {flips}/{features_seen}；单次判断 {single_flips}/{features_seen}")
 
         if real_audit:
             if runner_factory is None:

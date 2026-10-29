@@ -115,7 +115,7 @@ _FEATURE_VALUES = ("yes", "no", "later", "unknown")
 def coerce_stage_output(stage: str, data: Any) -> Any:
     """在 schema 校验之前，把模型输出里「结构对、写法偏」的地方拉回标准形态。
 
-    目前只处理 features 块（extract / infer 阶段）：
+    目前只处理 features 块（extract / infer / vote_features 阶段）：
     - 键写成组件编号（s03）而不是特征 id（destructive_ops）→ 按映射表改回来；
       真实模型跑题库时出现过这种输出，当时所有特征都被当成 unknown，整份方案全部「待确认」。
     - 值写成裸字符串（"yes"）而不是对象 → 包成 {"value": "yes", "evidence": ""}。
@@ -123,7 +123,7 @@ def coerce_stage_output(stage: str, data: Any) -> Any:
     不补缺失的键：缺键交给 required 校验去触发一次纠错重试，让模型自己补。
     """
     base = stage.removesuffix("_retry")
-    if base not in ("extract", "infer") or not isinstance(data, dict):
+    if not (base in ("extract", "infer") or base.startswith("vote_features")) or not isinstance(data, dict):
         return data
     features = data.get("features")
     if not isinstance(features, dict):

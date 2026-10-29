@@ -308,22 +308,24 @@ def log_plan(out_dir: Path, plan, doc: Path) -> None:
 
 def quick_reselect(prd_text: str, runner, ws: Path, log: Callable[[str], None] = print,
                    feature_overrides: dict[str, dict] | None = None) -> tuple[dict, list[dict]]:
-    """只跑需求拆解 + 规则选型，不做架构设计与审稿。
+    """只跑需求拆解（含特征多数票）+ 规则选型，不做架构设计与审稿。
 
     与 run_plan 用同一份 context 与提示词，所以结果进缓存后，之后的 `plan --resume` 会直接沿用需求拆解。
     不改写 plan.json / 方案.md（它们仍是上一版的设计）。
     """
-    from blueprint.forward import _fmt_fact_keys, _fmt_features, _fmt_questions
+    from blueprint.forward import _fmt_fact_keys, _fmt_features, _fmt_questions, vote_on_features
     from blueprint.knowledge import load_prompt
     from blueprint.pipeline import StageRunner
     from blueprint.rules import select_components
-    from blueprint.schema import EXTRACT_SCHEMA
+    from blueprint.schema import EXTRACT_SCHEMA, FEATURE_IDS
     prd_text = strip_auto_sections(prd_text)        # 与 run_plan 同口径，缓存才能互通
     stages = StageRunner(runner, ws, resume=True, log=log, context={"kind": "plan", "input": prd_text})
     stages.save("input.md", prd_text)
     extract = stages.run("extract", load_prompt("extract").format(
         fact_keys=_fmt_fact_keys(), features=_fmt_features(),
         questions=_fmt_questions(), input=prd_text), EXTRACT_SCHEMA, "① 需求拆解（快速模式）")
+    if set(feature_overrides or {}) < set(FEATURE_IDS):     # 和 run_plan 一致，缓存才能互通
+        extract = {**extract, "features": vote_on_features(extract.get("features", {}), prd_text, stages, log)}
     if feature_overrides:
         extract = {**extract, "features": {**extract.get("features", {}), **feature_overrides}}
     log("  ▶ ③ 组件选型（规则，快速模式）")

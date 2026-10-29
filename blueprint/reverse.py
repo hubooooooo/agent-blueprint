@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
 from blueprint.agent import supports_agent
-from blueprint.forward import _fmt_fact_keys, _fmt_features, _fmt_questions, _dump
+from blueprint.forward import _fmt_fact_keys, _fmt_features, _fmt_questions, _dump, vote_on_features
 from blueprint.knowledge import ACCEPTANCE, COMPONENT_BY_ID, FACT_KEYS, load_prompt
 from blueprint.llm import BudgetExceeded, Runner
 from blueprint.pipeline import StageRunner
@@ -154,8 +155,13 @@ AGENT_RESERVE_CALLS = 2        # agent 之后还要留给独立复核的调用�
 
 
 def run_audit(project: Path, runner: Runner, out_dir: Path, prd_text: str | None = None,
-              resume: bool = False, log: Callable[[str], None] = print, fast: bool = False) -> tuple[Audit, Path]:
-    """fast=True 或模型不支持工具调用时走关键词扫描；否则由 agent 读代码核实，失败自动退回扫描。"""
+              resume: bool = False, log: Callable[[str], None] = print, fast: bool = False,
+              rejudge: bool = False) -> tuple[Audit, Path]:
+    """fast=True 或模型不支持工具调用时走关键词扫描；否则由 agent 读代码核实，失败自动退回扫描。
+
+    没给 PRD、输出目录里有同一项目上次 agent 检查的结果时，特征判断沿用上次的（见 previous_features），
+    再次检查的差别只来自代码变化，不来自模型判断的波动；rejudge=True 重新判断。
+    """
     project = Path(project).resolve()
     if not project.is_dir():
         raise FileNotFoundError(f"项目目录不存在：{project}")
@@ -172,15 +178,23 @@ def run_audit(project: Path, runner: Runner, out_dir: Path, prd_text: str | None
         prd_extract = stages.run("extract", load_prompt("extract").format(
             fact_keys=_fmt_fact_keys(), features=_fmt_features(),
             questions=_fmt_questions(), input=prd_text), EXTRACT_SCHEMA, "② 拆解对照的 PRD")
+        if not fast:
+            prd_extract["features"] = vote_on_features(prd_extract.get("features", {}), prd_text, stages, log,
+                                                       label="② 复核特征判断")
         prd_decisions = [d.to_dict() for d in select_components(prd_extract.get("features", {}))]
 
     intent, findings, agent_stats = None, None, {}
     use_agent, mode_note = _agent_plan(runner, fast)
+    carried = None if (prd_text or rejudge or resume) else previous_features(Path(out_dir), project)
+    if carried:
+        prd_decisions = [d.to_dict() for d in select_components(carried["features"])]
+        log(f"  ↻ 特征判断沿用 {carried['date']} 那次检查（要重新判断加 --rejudge）")
     if use_agent:
         log(f"  ▶ {'③' if prd_text else '②'} agent 读代码：反推项目意图、逐个核实组件")
         try:
             intent, findings, agent_stats = investigate(project, inventory, runner, Path(out_dir), prd_decisions,
-                                                        log=log, max_turns=_agent_turns(runner), resume=resume)
+                                                        log=log, max_turns=_agent_turns(runner), resume=resume,
+                                                        basis="上次检查的特征判断" if carried else "用户提供的 PRD")
         except BudgetExceeded:
             raise
         except Exception as exc:  # noqa: BLE001 —— agent 失败不能让用户卡住，退回扫描写法
@@ -193,6 +207,9 @@ def run_audit(project: Path, runner: Runner, out_dir: Path, prd_text: str | None
             inventory_json=_dump(inventory.brief())), EXTRACT_SCHEMA,
             f"{'③' if prd_text else '②'} 反推项目意图（快速扫描）")
 
+    if carried:
+        intent = {**intent, "features": carried["features"]}
+        agent_stats = {**agent_stats, "features_from": carried["date"]}
     log(f"  ▶ {'④' if prd_text else '③'} 算出它应该有什么（规则），对照打分")
     decisions = prd_decisions or [d.to_dict() for d in select_components(intent.get("features", {}))]
     stages.save_json("stages/select.json", {"components": decisions})
@@ -222,6 +239,26 @@ def run_audit(project: Path, runner: Runner, out_dir: Path, prd_text: str | None
     stages.save("本该有的PRD.md", render_should_have_prd(audit))
     doc_path = stages.save("差距报告.md", render_audit(audit))
     return audit, doc_path
+
+
+def previous_features(out_dir: Path, project: Path) -> dict | None:
+    """同一输出目录里上次检查同一项目、由 agent 读代码判断出的特征。快速扫描判断的不沿用（它更容易错）。
+
+    返回 {"features": {...}, "date": "YYYY-MM-DD"}；没有就返回 None。
+    """
+    path = out_dir / "audit.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    features = (data.get("intent") or {}).get("features")
+    if data.get("root") != str(project) or data.get("mode") != "agent" or not isinstance(features, dict):
+        return None
+    if data.get("prd_extract"):      # 上次是对照 PRD 检查的，特征来自 PRD 而不是代码
+        return None
+    date = (data.get("agent_stats") or {}).get("features_from") or \
+        datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d")
+    return {"features": features, "date": date}
 
 
 def _agent_plan(runner: Runner, fast: bool) -> tuple[bool, str]:
@@ -289,6 +326,9 @@ def render_audit(audit: Audit) -> str:
         w("> 配置好 `.env` 后去掉 `--mock` 重新运行，才能得到可用于决策的差距报告。")
     if audit.prd_extract:
         w("> 对照依据：用户提供的 PRD（组件「应有」按 PRD 判定）")
+    elif audit.agent_stats.get("features_from"):
+        w(f"> 对照依据：沿用 {audit.agent_stats['features_from']} 那次检查的特征判断，这次只重新核实代码；"
+          "要重新判断这个项目该有什么，加 `--rejudge`")
     w("")
     w("## 一句话判定")
     w("")

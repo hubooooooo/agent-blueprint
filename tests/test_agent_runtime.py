@@ -19,6 +19,12 @@ MINIMAL_BOT = ROOT / "evals/reverse/minimal-bot"
 SCHEMA = {"type": "object", "required": ["answer"], "properties": {"answer": {"type": "string"}}}
 
 
+@pytest.fixture(autouse=True)
+def _no_vote(monkeypatch):
+    """特征多数票在 tests/test_vote.py 单独测；这里的剧本只写了 agent 这一份判断。"""
+    monkeypatch.setenv("BLUEPRINT_VOTE", "off")
+
+
 def use(name, args, uid=None):
     return {"type": "tool_use", "id": uid or f"tu_{name}_{json.dumps(args, sort_keys=True)}", "name": name, "input": args}
 
@@ -395,6 +401,40 @@ def test_resume_reuses_agent_findings(tmp_path):
     audit, _ = run_audit(MINIMAL_BOT, again, tmp_path / "out", log=quiet, resume=True)
     assert audit.mode == "agent" and again.seen_tools == []
     assert {g.id: g.present for g in audit.gaps}["s02"] == "weak"
+
+
+def test_recheck_carries_over_previous_feature_judgments(tmp_path):
+    run_audit(MINIMAL_BOT, ScriptRunner(_audit_script()), tmp_path / "out", log=quiet)
+    first = json.loads((tmp_path / "out/audit.json").read_text(encoding="utf-8"))
+    changed = _intent()
+    changed["features"]["multi_step"] = {"value": "yes", "evidence": "这次判成要做计划"}
+    components = {cid: {"strength": "none", "evidence": []} for cid in _flagged()}
+    components["s01"] = {"strength": "strong", "evidence": [{"file": "src/bot.py", "line": 16, "note": "循环"}]}
+    again = ScriptRunner([reply(use("read_file", {"path": "src/bot.py"})),
+                          reply(use("finish", {"intent": changed, "components": components}))])
+    audit, doc = run_audit(MINIMAL_BOT, again, tmp_path / "out", log=quiet)
+    assert audit.intent["features"] == first["intent"]["features"]           # 没被这次的判断带跑
+    assert {c["id"]: c["decision"] for c in audit.components}["s05"] == "放弃"
+    assert "已按上次检查的特征判断用规则算好" in again.seen_messages[0][0]["content"]
+    assert "select_components" not in again.seen_tools[0]
+    report = doc.read_text(encoding="utf-8")
+    assert "沿用" in report and "--rejudge" in report
+
+
+def test_rejudge_and_other_projects_do_not_carry_over(tmp_path):
+    run_audit(MINIMAL_BOT, ScriptRunner(_audit_script()), tmp_path / "out", log=quiet)
+    runner = ScriptRunner(_audit_script())
+    audit, _ = run_audit(MINIMAL_BOT, runner, tmp_path / "out", log=quiet, rejudge=True)
+    assert "features_from" not in audit.agent_stats
+    assert "select_components" in runner.seen_tools[0]
+    from blueprint.reverse import previous_features
+    assert previous_features(tmp_path / "out", ROOT / "evals/reverse/keyword-only") is None
+
+
+def test_fast_scan_results_are_not_carried_over(tmp_path):
+    run_audit(MINIMAL_BOT, MockRunner(), tmp_path / "out", log=quiet, fast=True)
+    from blueprint.reverse import previous_features
+    assert previous_features(tmp_path / "out", MINIMAL_BOT) is None
 
 
 def test_run_audit_falls_back_to_scan_when_agent_errors(tmp_path):

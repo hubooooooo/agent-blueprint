@@ -267,9 +267,11 @@ def _tools(files: ProjectFiles, with_select: bool) -> list[Tool]:
 
 def investigate(project: Path, inventory: Inventory, runner, out_dir: Path, prd_decisions: list[dict] | None,
                 log: Callable[[str], None] = print, max_turns: int = MAX_TURNS,
-                resume: bool = False) -> tuple[dict, dict, dict]:
+                resume: bool = False, basis: str = "用户提供的 PRD") -> tuple[dict, dict, dict]:
     """返回 (intent, findings, stats)。失败抛 AgentFailed 或模型调用异常，由调用方退回快速扫描。
 
+    prd_decisions：已经算好的选型（来自用户的 PRD，或沿用上次检查的特征判断），给了就不让 agent 判断特征；
+        basis 写明它从哪来。
     resume=True 且源码、PRD 选型、模型、提示词都没变时，沿用上次的结论，不再调模型。
     """
     cache = out_dir / "stages" / "audit_agent.json"
@@ -296,7 +298,7 @@ def investigate(project: Path, inventory: Inventory, runner, out_dir: Path, prd_
             return sorted(set(wanted) | set(flagged))
 
         expected = "\n".join(f"- {d['id']} {d['name']}：{d['decision']}" for d in prd_decisions)
-        selection = ("## 这个项目应有的组件（已按用户提供的 PRD 用规则算好，不用你再判断）\n"
+        selection = (f"## 这个项目应有的组件（已按{basis}用规则算好，不用你再判断）\n"
                      f"{expected}\n\n必选、二期、待确认的组件都要核实；放弃的可以不交。")
     else:
         def required(result: dict) -> list[str]:

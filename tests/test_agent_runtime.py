@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from blueprint.agent import AgentFailed, Tool, run_agent
+import blueprint.agent as agent_mod
+from blueprint.agent import AgentFailed, Hook, Tool, compact, run_agent
 from blueprint.audit_agent import ProjectFiles, make_check
 from blueprint.knowledge import FEATURES
 from blueprint.llm import Budget
@@ -170,6 +171,101 @@ def test_thinking_blocks_are_kept_in_history(tmp_path):
 def test_runner_without_step_is_rejected():
     with pytest.raises(AgentFailed):
         run_agent("t", "sys", "go", [], SCHEMA, MockRunner(), log=quiet)
+
+
+# ---------------------------------------------------------------------------
+# 钩子（s04）
+# ---------------------------------------------------------------------------
+
+def test_before_tool_hook_blocks_without_running_the_tool():
+    calls = []
+    hook = Hook(before_tool=lambda name, args: "不许" if args.get("text") == "x" else None)
+    runner = ScriptRunner([reply(use("echo", {"text": "x"}, "a"), use("echo", {"text": "y"}, "b")),
+                           reply(use("finish", {"answer": "ok"}))])
+    run_agent("t", "sys", "go", [echo_tool(calls)], SCHEMA, runner, log=quiet, hooks=[hook])
+    assert calls == [{"text": "y"}]
+    results = {r["tool_use_id"]: r["content"] for r in runner.seen_messages[1][-1]["content"]}
+    assert results == {"a": "不许", "b": "echo:y"}
+
+
+def test_after_tool_hook_rewrites_result():
+    hook = Hook(after_tool=lambda name, args, content: content.upper())
+    runner = ScriptRunner([reply(use("echo", {"text": "a"})), reply(use("finish", {"answer": "ok"}))])
+    run_agent("t", "sys", "go", [echo_tool([])], SCHEMA, runner, log=quiet, hooks=[hook])
+    assert runner.seen_messages[1][-1]["content"][0]["content"] == "ECHO:A"
+
+
+def test_before_finish_hook_rejects_until_fixed():
+    hook = Hook(before_finish=lambda r: [] if r["answer"] == "42" else ["答案不对"])
+    runner = ScriptRunner([reply(use("finish", {"answer": "41"})), reply(use("finish", {"answer": "42"}))])
+    assert run_agent("t", "sys", "go", [], SCHEMA, runner, log=quiet, hooks=[hook]) == {"answer": "42"}
+    assert "答案不对" in runner.seen_messages[1][-1]["content"][0]["content"]
+
+
+def test_describe_logs_even_blocked_calls():
+    lines = []
+    hook = Hook(before_tool=lambda name, args: "不许")
+    runner = ScriptRunner([reply(use("echo", {"text": "a"})), reply(use("finish", {"answer": "ok"}))])
+    run_agent("t", "sys", "go", [echo_tool([])], SCHEMA, runner, log=lines.append, hooks=[hook],
+              describe=lambda name, args: f"回显 {args['text']}")
+    assert "    · 回显 a" in lines
+
+
+def test_repeat_guard_blocks_third_identical_call():
+    calls = []
+    runner = ScriptRunner([reply(use("echo", {"text": "a"}, "1")), reply(use("echo", {"text": "a"}, "2")),
+                           reply(use("echo", {"text": "a"}, "3")), reply(use("echo", {"text": "b"}, "4")),
+                           reply(use("finish", {"answer": "ok"}))])
+    run_agent("t", "sys", "go", [echo_tool(calls)], SCHEMA, runner, log=quiet)
+    assert calls == [{"text": "a"}, {"text": "a"}, {"text": "b"}]
+    assert "完全一样" in runner.seen_messages[3][-1]["content"][0]["content"]
+
+
+# ---------------------------------------------------------------------------
+# 收起旧的工具结果（s08）
+# ---------------------------------------------------------------------------
+
+def _history(rounds, size):
+    messages = [{"role": "user", "content": "go"}]
+    for i in range(rounds):
+        messages.append({"role": "assistant", "content": [
+            {"type": "thinking", "thinking": f"想{i}", "signature": "s"},
+            {"type": "tool_use", "id": f"u{i}", "name": "read_file", "input": {"path": f"f{i}.py"}}]})
+        messages.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": f"u{i}", "content": "x" * size}]})
+    return messages
+
+
+def test_compact_does_nothing_under_limit():
+    messages = _history(4, 100)
+    before = json.dumps(messages)
+    assert compact(messages, lambda n, a: n, limit=1000) == (0, 0)
+    assert json.dumps(messages) == before
+
+
+def test_compact_collapses_all_but_recent_rounds_and_keeps_pairs():
+    messages = _history(5, 1000)
+    assistants = json.dumps([m for m in messages if m["role"] == "assistant"])
+    collapsed, freed = compact(messages, lambda n, a: f"{n} {a['path']}", limit=3000, keep=2)
+    assert collapsed == 3 and freed > 2500
+    results = [m["content"][0] for m in messages if m["role"] == "user" and isinstance(m["content"], list)]
+    assert [r["tool_use_id"] for r in results] == ["u0", "u1", "u2", "u3", "u4"]
+    assert results[0]["content"] == "（已收起：read_file f0.py，原 1,000 字；需要时重新调用）"
+    assert results[3]["content"] == results[4]["content"] == "x" * 1000
+    assert json.dumps([m for m in messages if m["role"] == "assistant"]) == assistants
+    assert compact(messages, lambda n, a: n, limit=3000, keep=2) == (0, 0)   # 已收起的不再重复收
+
+
+def test_loop_compacts_when_history_grows(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent_mod, "COMPACT_AT", 300)
+    lines = []
+    runner = ScriptRunner([reply(use("echo", {"text": "a" * 200}, "1")), reply(use("echo", {"text": "b" * 200}, "2")),
+                           reply(use("echo", {"text": "c" * 200}, "3")), reply(use("finish", {"answer": "ok"}))])
+    run_agent("t", "sys", "go", [echo_tool([])], SCHEMA, runner, log=lines.append, transcript=tmp_path / "t.jsonl")
+    sent = runner.seen_messages[3]
+    assert sent[2]["content"][0]["content"].startswith("（已收起：echo")
+    assert sent[-1]["content"][0]["content"] == "echo:" + "c" * 200
+    assert any("收起早先的 1 条" in line for line in lines)
+    assert '"compacted": 1' in (tmp_path / "t.jsonl").read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ from pathlib import Path
 
 USAGE_FILE = "usage.json"
 KINDS = ("plan", "chat")
-_FIELDS = ("calls", "input_tokens", "output_tokens")
+_FIELDS = ("calls", "input_tokens", "output_tokens", "cache_read_tokens")   # 旧文件没有 cache_read_tokens，读作 0
 _lock = threading.Lock()   # 推导任务和对话可能同时写
 
 

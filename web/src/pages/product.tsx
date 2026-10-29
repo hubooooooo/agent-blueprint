@@ -259,11 +259,13 @@ function UsageFooter({ product, stacked = false, className }: { product: Product
   const { budget } = plan
   const [label, u]: [string, Usage] = total.calls
     ? ["累计", total]
-    : ["最近一轮推导", { calls: budget.calls ?? 0, input_tokens: budget.input_tokens ?? 0, output_tokens: budget.output_tokens ?? 0 }]
+    : ["最近一轮推导", { calls: budget.calls ?? 0, input_tokens: budget.input_tokens ?? 0, output_tokens: budget.output_tokens ?? 0,
+                         cache_read_tokens: budget.cache_read_tokens ?? 0 }]
   if (!u.calls) return null
   const tokens = stacked
     ? [`输入 ${n(u.input_tokens)} tokens`, `输出 ${n(u.output_tokens)} tokens`]
     : [`输入 ${n(u.input_tokens)} / 输出 ${n(u.output_tokens)} tokens`]
+  if (u.cache_read_tokens) tokens.push(`命中缓存 ${n(u.cache_read_tokens)} tokens`)
   const parts = [
     plan.runner === "mock" ? "离线演示" : "真实模型",
     `${label}调用 ${u.calls} 次`,

@@ -101,8 +101,7 @@ class AnthropicChat:
         ) as stream:
             yield from stream.text_stream
             usage = getattr(stream.get_final_message(), "usage", None)
-        self.runner.budget.record("chat", getattr(usage, "input_tokens", 0) or 0,
-                                  getattr(usage, "output_tokens", 0) or 0)
+        self.runner.budget.record_usage("chat", usage)
 
     def complete_json(self, stage: str, prompt: str, schema: dict) -> dict:
         return self.runner.complete(stage, load_prompt("common_system"), prompt, schema)

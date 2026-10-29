@@ -12,7 +12,7 @@ from typing import Callable
 from blueprint.agent import supports_agent
 from blueprint.forward import _fmt_fact_keys, _fmt_features, _fmt_questions, _dump, vote_on_features
 from blueprint.knowledge import ACCEPTANCE, COMPONENT_BY_ID, FACT_KEYS, load_prompt
-from blueprint.llm import BudgetExceeded, Runner
+from blueprint.llm import BudgetExceeded, Runner, cached_note
 from blueprint.pipeline import StageRunner
 from blueprint.rules import select_components, describe_feature
 from blueprint.scanner import Inventory, scan_project
@@ -425,7 +425,7 @@ def render_audit(audit: Audit) -> str:
     w("")
     if audit.budget:
         b = audit.budget
-        w(f"本次审计消耗：模型调用 {b.get('calls', 0)} 次，输入 {b.get('input_tokens', 0)} tokens，输出 {b.get('output_tokens', 0)} tokens。")
+        w(f"本次审计消耗：模型调用 {b.get('calls', 0)} 次，输入 {b.get('input_tokens', 0)} tokens，输出 {b.get('output_tokens', 0)} tokens{cached_note(b)}。")
         w("")
     w("附：`本该有的PRD.md` 可以直接喂给 `blueprint plan` 生成完整方案。")
     w("")

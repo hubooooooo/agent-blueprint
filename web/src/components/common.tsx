@@ -2,7 +2,7 @@ import { MenuIcon } from "lucide-react"
 import { createContext, useContext, type ReactNode } from "react"
 
 import { Button } from "@/components/ui/button"
-import type { Decision, ProductSummary, Settings } from "@/lib/api"
+import type { AuditSummary, Decision, ProductSummary, Settings } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 export const SettingsContext = createContext<{ settings: Settings; reload: () => Promise<void> } | null>(null)
@@ -13,10 +13,12 @@ export function useSettings() {
   return ctx
 }
 
-/** 应用外壳：侧边栏里的产品列表，以及窄屏下侧边栏的开关。 */
+/** 应用外壳：侧边栏里的产品和检查过的项目，以及窄屏下侧边栏的开关。 */
 export const ShellContext = createContext<{
   products: ProductSummary[] | null
   reloadProducts: () => Promise<void>
+  audits: AuditSummary[] | null
+  reloadAudits: () => Promise<void>
   openSidebar: () => void
 } | null>(null)
 

@@ -1,13 +1,14 @@
-import { PlusIcon, SettingsIcon, XIcon } from "lucide-react"
+import { PlusIcon, ScanSearchIcon, SettingsIcon, XIcon } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 
 import { SettingsContext, ShellContext } from "@/components/common"
 import { Button } from "@/components/ui/button"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { api, type ProductSummary, type Settings } from "@/lib/api"
-import { productHref, useRoute, type Route } from "@/lib/route"
+import { api, type AuditSummary, type ProductSummary, type Settings } from "@/lib/api"
+import { auditHref, productHref, useRoute, type Route } from "@/lib/route"
 import { cn } from "@/lib/utils"
+import { AuditPage, AuditsPage, NewAuditPage } from "@/pages/audits"
 import { HomePage } from "@/pages/home"
 import { NewProductPage } from "@/pages/new-product"
 import { ProductPage } from "@/pages/product"
@@ -33,11 +34,13 @@ function Sidebar({
   route,
   settings,
   products,
+  audits,
   onNavigate,
 }: {
   route: Route
   settings: Settings | null
   products: ProductSummary[] | null
+  audits: AuditSummary[] | null
   onNavigate: () => void
 }) {
   return (
@@ -55,6 +58,9 @@ function Sidebar({
       <div className="px-2 pt-1">
         <a href="#/new" onClick={onNavigate} className={itemClass(route.page === "new")}>
           <PlusIcon className="size-4" /> 新建产品
+        </a>
+        <a href="#/audits/new" onClick={onNavigate} className={itemClass(route.page === "audit-new")}>
+          <ScanSearchIcon className="size-4" /> 检查一个项目
         </a>
       </div>
 
@@ -84,6 +90,34 @@ function Sidebar({
             )}
           </a>
         ))}
+
+        <a
+          href="#/audits"
+          onClick={onNavigate}
+          className={cn(
+            "mt-4 mb-1 block px-2 font-mono text-xs tracking-wider text-muted-foreground hover:text-foreground",
+            route.page === "audits" && "text-foreground",
+          )}
+        >
+          检查过的项目
+        </a>
+        {audits?.length === 0 && <p className="px-2 py-1 text-xs text-muted-foreground">还没有检查过</p>}
+        {audits?.map((a) => (
+          <a
+            key={a.slug}
+            href={auditHref(a.slug)}
+            onClick={onNavigate}
+            className={itemClass(route.page === "audit" && route.slug === a.slug)}
+            title={a.root}
+          >
+            <span className="min-w-0 flex-1 truncate">{a.name}</span>
+            {a.completion != null && (
+              <span className="font-mono text-xs font-normal text-muted-foreground" title="必选组件信号覆盖率">
+                {Math.round(a.completion * 100)}%
+              </span>
+            )}
+          </a>
+        ))}
       </nav>
 
       <div className="border-t px-2 py-2">
@@ -108,6 +142,7 @@ export default function App() {
   const route = useRoute()
   const [settings, setSettings] = useState<Settings | null>(null)
   const [products, setProducts] = useState<ProductSummary[] | null>(null)
+  const [audits, setAudits] = useState<AuditSummary[] | null>(null)
   const [error, setError] = useState("")
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -128,21 +163,30 @@ export default function App() {
     }
   }, [])
 
+  const reloadAudits = useCallback(async () => {
+    try {
+      setAudits((await api.audits()).audits)
+    } catch {
+      /* 同上 */
+    }
+  }, [])
+
   useEffect(() => {
     reload()
   }, [reload])
 
   // 新建产品、升版本后都会换页面，换页时顺手刷新侧边栏
-  const routeKey = route.page === "product" ? `product:${route.slug}` : route.page
+  const routeKey = route.page === "product" || route.page === "audit" ? `${route.page}:${route.slug}` : route.page
   useEffect(() => {
     reloadProducts()
-  }, [reloadProducts, routeKey])
+    reloadAudits()
+  }, [reloadProducts, reloadAudits, routeKey])
 
   const closeSidebar = () => setSidebarOpen(false)
 
   return (
     <TooltipProvider>
-      <ShellContext.Provider value={{ products, reloadProducts, openSidebar: () => setSidebarOpen(true) }}>
+      <ShellContext.Provider value={{ products, reloadProducts, audits, reloadAudits, openSidebar: () => setSidebarOpen(true) }}>
         <div className="flex h-svh overflow-hidden">
           <aside
             className={cn(
@@ -150,7 +194,7 @@ export default function App() {
               sidebarOpen ? "translate-x-0" : "-translate-x-full",
             )}
           >
-            <Sidebar route={route} settings={settings} products={products} onNavigate={closeSidebar} />
+            <Sidebar route={route} settings={settings} products={products} audits={audits} onNavigate={closeSidebar} />
           </aside>
           {sidebarOpen && <div className="fixed inset-0 z-30 bg-foreground/20 md:hidden" onClick={closeSidebar} />}
 
@@ -162,6 +206,9 @@ export default function App() {
                 {route.page === "new" && <NewProductPage />}
                 {route.page === "settings" && <SettingsPage />}
                 {route.page === "product" && <ProductPage slug={route.slug} tab={route.tab} />}
+                {route.page === "audits" && <AuditsPage />}
+                {route.page === "audit-new" && <NewAuditPage />}
+                {route.page === "audit" && <AuditPage slug={route.slug} tab={route.tab} />}
               </SettingsContext.Provider>
             )}
           </main>

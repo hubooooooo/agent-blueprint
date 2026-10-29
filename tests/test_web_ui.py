@@ -405,3 +405,133 @@ def test_play_without_plan_is_a_plain_400(server, app):
     init_workspace(app.out_root, "空产品", "一句话")
     status, body, _ = call(base + "/api/products/" + urllib.request.quote("空产品") + "/play-intro", {})
     assert status == 400 and "先生成方案" in json.loads(body)["error"]
+
+
+# ---------------------------------------------------------------------------
+# 检查外部项目
+# ---------------------------------------------------------------------------
+
+from blueprint.web import audits as audits_mod  # noqa: E402
+from blueprint.web.server import check_project_folder  # noqa: E402
+
+
+def make_project(base, name="minimal-bot"):
+    import shutil
+    dst = base / "projects" / name
+    shutil.copytree(ROOT / "evals/reverse/minimal-bot", dst, ignore=shutil.ignore_patterns("expected.json"))
+    return dst
+
+
+def test_audit_over_http_lists_and_shows_report(server, app, tmp_path):
+    (srv, base) = server
+    project = make_project(tmp_path)
+    status, body, _ = call(f"{base}/api/audits", {"path": str(project)})
+    assert status == 201
+    data = json.loads(body)
+    assert data["slug"] == "audit-minimal-bot"
+    wait_job(app.jobs.get(data["job"]["id"]))
+    assert app.jobs.get(data["job"]["id"]).status == "done"
+
+    _, body, _ = call(f"{base}/api/audits")
+    [item] = json.loads(body)["audits"]
+    assert item["name"] == "minimal-bot" and item["root"] == str(project.resolve()) and item["finished"]
+
+    _, body, _ = call(f"{base}/api/audits/audit-minimal-bot")
+    detail = json.loads(body)
+    assert detail["verdict"] and detail["report"].startswith("# Agent Harness 差距报告")
+    assert detail["suggested_prd"] and detail["mode"] == "fast" and detail["job"]["status"] == "done"
+    _, body, _ = call(f"{base}/api/products")
+    assert json.loads(body)["products"] == []           # 检查结果不会混进产品列表
+
+
+def test_pick_folder_uses_the_native_picker_and_cancel_is_empty(tmp_path, monkeypatch):
+    clear_env(monkeypatch)
+    picks = iter(["/Users/x/proj", ""])
+    app = App(tmp_path / "out", env_path=tmp_path / ".env", mock=True, folder_picker=lambda: next(picks))
+    assert app.pick_folder() == {"path": "/Users/x/proj"}
+    assert app.pick_folder() == {"path": ""}
+
+
+def test_project_folder_rejects_root_home_relative_and_missing(tmp_path):
+    for raw, words in [("", "先选择"), ("/", "太大"), (str(Path.home()), "太大"), ("~", "太大"),
+                       ("proj", "完整的文件夹路径"), (str(tmp_path / "nope"), "找不到")]:
+        with pytest.raises(ValueError, match=words):
+            check_project_folder(raw)
+    assert check_project_folder(f"'{tmp_path}'") == tmp_path.resolve()      # Finder 拷贝出来的路径可能带引号
+
+
+def test_same_folder_name_from_another_project_gets_its_own_dir(tmp_path):
+    out = tmp_path / "out"
+    first, second = make_project(tmp_path / "a"), make_project(tmp_path / "b")
+    d = audits_mod.audit_dir_for(out, first)
+    d.mkdir(parents=True)
+    (d / "inventory.json").write_text(json.dumps({"root": str(first.resolve())}), encoding="utf-8")
+    assert audits_mod.audit_dir_for(out, first) == d
+    assert audits_mod.audit_dir_for(out, second).name == "audit-minimal-bot-2"
+
+
+def test_rerun_modes_map_to_run_audit_flags(app, tmp_path, monkeypatch):
+    project = make_project(tmp_path)
+    slug = app.create_audit({"path": str(project)})["slug"]
+    wait_job(app.jobs.latest_for(slug))
+    seen = []
+    import blueprint.reverse as reverse_mod
+    real = reverse_mod.run_audit
+
+    def spy(*args, **kwargs):
+        seen.append((kwargs["rejudge"], kwargs["resume"]))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(reverse_mod, "run_audit", spy)
+    for mode in ("recheck", "rejudge", "resume"):
+        wait_job(app.rerun_audit(slug, {"mode": mode}))
+    assert seen == [(False, False), (True, False), (False, True)]
+    with pytest.raises(ValueError, match="不认识"):
+        app.rerun_audit(slug, {"mode": "x"})
+
+
+def test_rerun_when_project_folder_is_gone_is_a_plain_400(server, app, tmp_path):
+    import shutil
+    (srv, base) = server
+    project = make_project(tmp_path)
+    slug = app.create_audit({"path": str(project)})["slug"]
+    wait_job(app.jobs.latest_for(slug))
+    shutil.rmtree(project)
+    status, body, _ = call(f"{base}/api/audits/{slug}/run", {"mode": "recheck"})
+    assert status == 400 and "找不到了" in json.loads(body)["error"]
+
+
+def test_resolve_audit_rejects_products_and_traversal(app):
+    app.create_product({"name": "玩具剧场", "idea": IDEA})
+    for slug in ["玩具剧场", "../out", "audit-..", "audit-x/y", "audit-none"]:
+        with pytest.raises(LookupError):
+            audits_mod.resolve_audit(app.out_root, slug)
+
+
+def test_cli_audit_results_show_up_and_unfinished_ones_too(tmp_path):
+    out = tmp_path / "out"
+    done = out / "audit-cli-proj"
+    done.mkdir(parents=True)
+    (done / "audit.json").write_text(json.dumps({"root": "/p/cli-proj", "title": "命令行检查的", "completion": 0.5,
+                                                 "mode": "agent", "gaps": [{"verdict": "缺失"}, {"verdict": "薄弱"}]}),
+                                     encoding="utf-8")
+    (done / "差距报告.md").write_text("# 报告\n\n## 一句话判定\n\n**只有雏形。** 必选组件信号覆盖率 **50%**。\n", encoding="utf-8")
+    half = out / "audit-half"
+    half.mkdir()
+    (half / "inventory.json").write_text(json.dumps({"root": "/p/half"}), encoding="utf-8")
+    (done / "差距报告.md").write_text("> 对照依据：沿用上次的判断；要重新判断这个项目该有什么，加 `--rejudge`\n\n"
+                                    "## 一句话判定\n\n**只有雏形。**\n", encoding="utf-8")
+    assert "点右上角「重新判断」" in audits_mod.audit_detail(done)["report"]
+    items = {a["slug"]: a for a in audits_mod.list_audits(out)}
+    assert items["audit-cli-proj"]["verdict"] == "只有雏形" and items["audit-cli-proj"]["missing"] == 1
+    assert items["audit-cli-proj"]["weak"] == 1 and items["audit-cli-proj"]["name"] == "cli-proj"
+    assert items["audit-half"]["finished"] is False
+
+
+def test_one_running_audit_per_project_has_its_own_message():
+    jobs = JobManager()
+    gate = threading.Event()
+    jobs.start("audit", "audit-x", lambda log: gate.wait(5))
+    with pytest.raises(ValueError, match="正在检查中"):
+        jobs.start("audit", "audit-x", lambda log: None)
+    gate.set()

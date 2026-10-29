@@ -299,7 +299,7 @@ def _budget_nearly_spent(budget: Any) -> bool:
         return False
     if budget.calls >= budget.max_calls - 1:
         return True
-    return budget.input_tokens + budget.output_tokens >= budget.max_tokens * 0.85
+    return budget.spent() >= budget.max_tokens * 0.85
 
 
 def _append(path: Path | None, record: dict) -> None:

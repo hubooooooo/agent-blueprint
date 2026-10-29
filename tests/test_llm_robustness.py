@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from blueprint.llm import AnthropicRunner, Budget, StageOutputInvalid, extract_json
+from blueprint.llm import AnthropicRunner, Budget, BudgetExceeded, StageOutputInvalid, cached_note, extract_json
 from blueprint.schema import EXTRACT_SCHEMA, FEATURE_IDS
 
 FACTS = {k: {"value": "x", "status": "明确", "source": ""} for k in
@@ -85,3 +85,28 @@ def test_stage_runner_dumps_failed_attempts(tmp_path, monkeypatch):
     dump = tmp_path / "stages" / "extract.failed.json"
     assert dump.is_file()
     assert [a["text"] for a in json.loads(dump.read_text(encoding="utf-8"))] == ["不是 json", "还不是"]
+
+
+def test_budget_records_cache_reads_separately_and_counts_them_at_a_tenth():
+    b = Budget(max_calls=10, max_tokens=1000)
+    usage = SimpleNamespace(input_tokens=100, output_tokens=50, cache_read_input_tokens=5000,
+                            cache_creation_input_tokens=20)
+    assert b.record_usage("x", usage) == 50
+    assert (b.input_tokens, b.output_tokens, b.cache_read_tokens) == (120, 50, 5000)
+    assert b.spent() == 120 + 50 + 500
+    assert b.summary()["cache_read_tokens"] == 5000
+    b.record_usage("x", SimpleNamespace(input_tokens=200, output_tokens=0, cache_read_input_tokens=2000))  # 320+50+700 > 1000
+    with pytest.raises(BudgetExceeded, match="token 上限"):
+        b.check()
+
+
+def test_usage_without_cache_fields_still_records():
+    b = Budget()
+    b.record_usage("x", SimpleNamespace(input_tokens=3, output_tokens=4))
+    b.record_usage("x", None)
+    assert (b.calls, b.input_tokens, b.output_tokens, b.cache_read_tokens) == (2, 3, 4, 0)
+
+
+def test_cached_note_only_when_there_were_cache_hits():
+    assert cached_note({"cache_read_tokens": 0}) == "" and cached_note({}) == ""
+    assert cached_note({"cache_read_tokens": 4300}) == "，另有 4300 tokens 命中缓存（按 1/10 计入上限）"

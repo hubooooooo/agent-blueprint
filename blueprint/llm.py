@@ -38,37 +38,65 @@ class StageOutputInvalid(RuntimeError):
     pass
 
 
+CACHE_READ_WEIGHT = 0.1     # 命中缓存的单价：Anthropic 原价 1/10，DeepSeek v4-flash 1/50；按贵的算，宁可算多
+
+
 @dataclass
 class Budget:
-    """费用护栏：调用次数和 token 总量任一超限即停。"""
+    """费用护栏：调用次数和 token 总量任一超限即停。
+
+    input_tokens 不含命中缓存的输入（接口单独返回），另记在 cache_read_tokens；
+    算 token 上限时按 CACHE_READ_WEIGHT 折算，见 spent()。
+    """
 
     max_calls: int = 16
     max_tokens: int = 400_000
     calls: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_read_tokens: int = 0
     history: list[dict] = field(default_factory=list)
+
+    def spent(self) -> int:
+        return self.input_tokens + self.output_tokens + round(self.cache_read_tokens * CACHE_READ_WEIGHT)
 
     def check(self) -> None:
         if self.calls >= self.max_calls:
             raise BudgetExceeded(f"已达到调用次数上限 {self.max_calls}")
-        if self.input_tokens + self.output_tokens >= self.max_tokens:
+        if self.spent() >= self.max_tokens:
             raise BudgetExceeded(f"已达到 token 上限 {self.max_tokens}")
 
-    def record(self, stage: str, input_tokens: int, output_tokens: int) -> None:
+    def record(self, stage: str, input_tokens: int, output_tokens: int, cache_read_tokens: int = 0) -> None:
         self.calls += 1
         self.input_tokens += input_tokens
         self.output_tokens += output_tokens
-        self.history.append({"stage": stage, "input_tokens": input_tokens, "output_tokens": output_tokens})
+        self.cache_read_tokens += cache_read_tokens
+        self.history.append({"stage": stage, "input_tokens": input_tokens, "output_tokens": output_tokens,
+                             "cache_read_tokens": cache_read_tokens})
+
+    def record_usage(self, stage: str, usage: Any) -> int:
+        """按接口返回的 usage 记一笔，返回输出 token 数。写入缓存的输入并进 input_tokens（单价约原价 1.25 倍）。"""
+        read = lambda key: getattr(usage, key, 0) or 0  # noqa: E731
+        output = read("output_tokens")
+        self.record(stage, read("input_tokens") + read("cache_creation_input_tokens"), output,
+                    read("cache_read_input_tokens"))
+        return output
 
     def summary(self) -> dict:
         return {
             "calls": self.calls,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
+            "cache_read_tokens": self.cache_read_tokens,
             "max_calls": self.max_calls,
             "max_tokens": self.max_tokens,
         }
+
+
+def cached_note(budget: dict) -> str:
+    """用量行的尾巴：「，另有 N tokens 命中缓存」；没有命中缓存时为空。"""
+    n = budget.get("cache_read_tokens", 0) or 0
+    return f"，另有 {n} tokens 命中缓存（按 1/{round(1 / CACHE_READ_WEIGHT)} 计入上限）" if n else ""
 
 
 class Runner(Protocol):
@@ -162,8 +190,7 @@ class AnthropicRunner:
             messages=messages,
             tools=tools,
         )
-        usage = getattr(response, "usage", None)
-        self.budget.record(stage, getattr(usage, "input_tokens", 0) or 0, getattr(usage, "output_tokens", 0) or 0)
+        self.budget.record_usage(stage, getattr(response, "usage", None))
         if getattr(response, "stop_reason", None) == "refusal":
             raise StageOutputInvalid(f"模型拒绝了阶段 {stage} 的请求")
         return response
@@ -183,9 +210,7 @@ class AnthropicRunner:
                 system=system,
                 messages=messages,
             )
-            usage = getattr(response, "usage", None)
-            output_tokens = getattr(usage, "output_tokens", 0) or 0
-            self.budget.record(stage, getattr(usage, "input_tokens", 0) or 0, output_tokens)
+            output_tokens = self.budget.record_usage(stage, getattr(response, "usage", None))
             stop_reason = getattr(response, "stop_reason", None)
             if stop_reason == "refusal":
                 raise StageOutputInvalid(f"模型拒绝了阶段 {stage} 的请求")

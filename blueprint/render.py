@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from blueprint.knowledge import ACCEPTANCE, COMPONENT_BY_ID, FACT_KEYS, FIVE_ELEMENTS, LAYERS
+from blueprint.llm import cached_note
 from blueprint.rules import describe_feature
 
 if TYPE_CHECKING:
@@ -223,7 +224,7 @@ def render_plan(plan: "Plan") -> str:
         b = plan.budget
         w("## 本次推导消耗")
         w("")
-        w(f"- 模型调用 {b.get('calls', 0)} 次，输入 {b.get('input_tokens', 0)} tokens，输出 {b.get('output_tokens', 0)} tokens")
+        w(f"- 模型调用 {b.get('calls', 0)} 次，输入 {b.get('input_tokens', 0)} tokens，输出 {b.get('output_tokens', 0)} tokens{cached_note(b)}")
         w("")
 
     w("## 下一步")

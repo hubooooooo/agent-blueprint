@@ -121,6 +121,9 @@ class MockRunner:
         stage = stage.removesuffix("_retry")
         if stage in ("extract", "infer"):
             return self._extract(prompt, stage)
+        if stage.startswith("vote_features"):
+            m = re.search(r"<input>\n?(.*?)\n?</input>", prompt, re.S)
+            return {"features": _guess_features(m.group(1) if m else prompt)}
         if stage == "model":
             return {
                 "tools": ["按输入推断的查询类工具", "按输入推断的写入类工具"],

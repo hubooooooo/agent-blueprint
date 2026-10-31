@@ -25,8 +25,8 @@
 
 <table>
 <tr><th align="left" width="16%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">版本</th><th align="left" width="40%">是什么</th><th align="left" width="22%">适合</th><th align="left" width="22%">下载</th></tr>
-<tr><td><b>v1 教学版</b></td><td>没有网页界面：项目文件夹、Python 引擎、终端一问一答。代码骨架靠你自己的 AI 编程工具来写，结果文件自己打开看</td><td>第一次接触，想看清项目里有什么、每一步怎么跑起来</td><td><a href="https://github.com/hubooooooo/agent-blueprint/tree/v1">浏览 v1</a> · <a href="https://github.com/hubooooooo/agent-blueprint/archive/refs/tags/v1.zip">下载 zip</a></td></tr>
-<tr><td><b>v2</b>（本页）</td><td>在 v1 的基础上加了本地网页界面：对话式新建产品、回答问题、试玩、导出交接包、检查外部项目</td><td>熟悉流程之后日常使用</td><td><a href="https://github.com/hubooooooo/agent-blueprint/archive/refs/heads/main.zip">下载 zip</a></td></tr>
+<tr><td><b>v1 教学版</b></td><td>没有网页界面：项目文件夹、Python 引擎、终端一问一答。代码骨架靠你自己的 AI 编程工具来写，结果文件自己打开看</td><td>第一次接触，想看清项目里有什么、每一步怎么跑起来</td><td><a href="https://github.com/hubooooooo/agent-blueprint/releases/tag/v1">下载学生包</a> · <a href="https://github.com/hubooooooo/agent-blueprint/tree/v1">浏览源码</a></td></tr>
+<tr><td><b>v2</b>（本页）</td><td>在 v1 的基础上加了本地网页界面：对话式新建产品、回答问题、试玩、导出交接包、检查外部项目</td><td>熟悉流程之后日常使用</td><td><a href="https://github.com/hubooooooo/agent-blueprint/releases/tag/v2">下载学生包</a></td></tr>
 </table>
 
 两个版本都在自己电脑上运行，不是网站：v1 双击 `启动引擎.command`，v2 双击 `启动界面.command`。v1 的用法看 [v1 的 README](https://github.com/hubooooooo/agent-blueprint/blob/v1/README.md)。

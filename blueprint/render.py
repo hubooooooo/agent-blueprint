@@ -19,9 +19,21 @@ def _cell(text) -> str:
     return str(text or "").replace("|", "／").replace("\n", " ").strip()
 
 
+def _brief(text, limit: int = 60) -> str:
+    """长段落的第一句，图和表格里只放摘要，全文在「技术栈与部署形态」一节。"""
+    text = _cell(text)
+    first = text.split("。", 1)[0]
+    return first if len(first) <= limit else first[:limit].rstrip("，、；：,;: ") + "…"
+
+
 def _components_in_layer3(components: list[dict]) -> str:
     chosen = [d for d in components if d["decision"] == "必选"]
     return " + ".join(f"{d['id']} {d['name']}" for d in chosen) or "loop + 工具"
+
+
+def _tools_in_layer(tool_list: list[dict], num: str, digit: str) -> str:
+    # 模型常写成「⑤能力集成层」「5 能力集成层」，按开头的编号认
+    return "、".join(t["name"] for t in tool_list if str(t.get("layer", "")).strip().startswith((num, digit)))
 
 
 def architecture_nodes(components: list[dict], tool_list: list[dict], deployment: str) -> list[tuple[str, str]]:
@@ -30,17 +42,18 @@ def architecture_nodes(components: list[dict], tool_list: list[dict], deployment
         ("② 产品层", "会话管理 · 请求路由 · 业务逻辑"),
         ("③ Agent 编排层", _components_in_layer3(components)),
         ("④ 模型层", "主模型 · fallback · 成本控制"),
-        ("⑤ 能力集成层", "、".join(t["name"] for t in tool_list if t.get("layer") in ("⑤", "5")) or "领域工具"),
-        ("⑥ 数据层", "、".join(t["name"] for t in tool_list if t.get("layer") in ("⑥", "6")) or "会话历史 · 轨迹数据 · 日志指标"),
-        ("⑦ 基础设施层", deployment or "部署形态待确认"),
+        ("⑤ 能力集成层", _tools_in_layer(tool_list, "⑤", "5") or "领域工具"),
+        ("⑥ 数据层", _tools_in_layer(tool_list, "⑥", "6") or "会话历史 · 轨迹数据 · 日志指标"),
+        ("⑦ 基础设施层", _brief(deployment, 40) or "部署形态待确认"),
     ]
 
 
 def render_mermaid(title: str, components: list[dict], tool_list: list[dict],
                    facts: dict, deployment: str) -> str:
     def escape(text: str) -> str:
-        return (_cell(text).replace("&", "#38;").replace('"', "#34;")
-                .replace("<", "#60;").replace(">", "#62;"))
+        # 换成全角：Mermaid 的 #38; 这类转义能渲染，但直接读原文像乱码
+        return (_cell(text).replace("&", "＆").replace('"', "＂")
+                .replace("<", "＜").replace(">", "＞"))
 
     users = _cell(facts.get("users", {}).get("value")) or "用户（待确认）"
     lines = ["```mermaid", "flowchart TD", f'    U["{escape(users[:60])}"] -->|输入 / 阅读交付物| L1']
@@ -228,11 +241,11 @@ def render_plan(plan: "Plan") -> str:
     w("| 标准 | 要求 | 本方案的对应设计 |")
     w("|---|---|---|")
     mapping = {
-        "runnable": design.get("tech_stack_and_deployment", ""),
+        "runnable": _brief(design.get("tech_stack_and_deployment", ""), 80),
         "fault_tolerant": "；".join(design.get("security_and_degradation", [])[:3]),
         "observable": "；".join(obs.get("logs", [])[:2] + obs.get("metrics", [])[:2]),
         "testable": "；".join(design.get("testing", [])) or "Step 5 骨架层需附核心循环与权限边界的单测",
-        "deployable": design.get("tech_stack_and_deployment", ""),
+        "deployable": "见上文「技术栈与部署形态」" if design.get("tech_stack_and_deployment") else "",
         "measurable": "；".join(obs.get("metrics", [])),
     }
     for key, (name, desc) in ACCEPTANCE.items():

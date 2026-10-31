@@ -185,3 +185,16 @@ def test_pending_list_groups_match_terminal_summary(tmp_path):
     assert "2 个方案留下的问题" in summary
     if needs:
         assert summary.startswith(f"{len(needs)} 个需求问题要回答")
+
+
+def test_architecture_diagram_reads_layer_names_and_stays_short():
+    """归属层写成「⑤能力集成层」也要进第 ⑤ 层；第 ⑦ 层只放部署说明的第一句；原文里不出现 #38; 这类转义。"""
+    from blueprint.render import architecture_nodes, render_mermaid
+    tools = [{"name": "search_menu", "layer": "⑤能力集成层"}, {"name": "save_order", "layer": "6 数据层"},
+             {"name": "reply", "layer": "①交互层"}]
+    deploy = "第一版部署形态：单进程服务。启动：python agent.py && 打开 <http://localhost>。" + "很长的说明" * 50
+    nodes = dict(architecture_nodes([], tools, deploy))
+    assert nodes["⑤ 能力集成层"] == "search_menu" and nodes["⑥ 数据层"] == "save_order"
+    assert nodes["⑦ 基础设施层"] == "第一版部署形态：单进程服务"
+    chart = render_mermaid("t", [], tools, {}, "A & B <c> \"d\"")
+    assert "#38;" not in chart and "#60;" not in chart and "A ＆ B ＜c＞ ＂d＂" in chart

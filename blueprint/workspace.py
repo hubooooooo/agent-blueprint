@@ -313,7 +313,7 @@ def log_plan(out_dir: Path, plan, doc: Path) -> None:
     version = current_version(read_prd(out_dir))
     must = [c["id"] for c in plan.components if c["decision"] == "必选"]
     append_log(out_dir, f"V{version} · 方案推导", [
-        f"方案：{Path(doc).name}（模型 {plan.runner}，审稿{'通过' if plan.review.get('ok') else '未完全通过，见文末意见'}）",
+        f"方案：{Path(doc).name}（模型 {plan.model_label}，审稿{'通过' if plan.review.get('ok') else '未完全通过，见文末意见'}）",
         f"必选组件：{'、'.join(must)}",
         f"待确认：{len(plan.extract.get('unknowns', []))} 条，回答写进 PRD.md 第 6 节",
         "人工验证结论：（待填）",

@@ -66,7 +66,7 @@ def render_plan(plan: "Plan") -> str:
     w("")
     status = "方案待确认" if review.get("ok") else "方案待确认（审稿未完全通过，见文末审稿意见）"
     w(f"> 状态：{status}（Step 1–4 已完成，Step 5 代码生成需确认后启动）")
-    w(f"> 推导引擎：Agent Blueprint · 模型：{plan.runner}")
+    w(f"> 推导引擎：Agent Blueprint · 模型：{plan.model_label}")
     if plan.design_mode == "agent":
         w("> 领域建模与架构设计由 agent 完成：可查组件说明，交卷前用规则自检（工具与选型一致、四类降级场景齐全等）。")
     elif plan.design_note:

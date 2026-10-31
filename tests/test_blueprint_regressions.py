@@ -146,3 +146,23 @@ def test_real_eval_differences_fail_exit_status(monkeypatch, capsys):
         monkeypatch.setattr(evals.tempfile, "mkdtemp", lambda **_: directory)
         assert evals.run_evals(real=True, runner_factory=MockRunner) == 1
     assert "项失败" in capsys.readouterr().out
+
+
+def test_reports_show_actual_model_not_runner_name(tmp_path):
+    """报告里的「模型」要写实际模型（如 deepseek-v4-flash），不能写运行器名 anthropic；离线演示仍写 mock。"""
+    class NamedModel(MockRunner):
+        model = "deepseek-v4-flash"
+
+    plan, doc = run_plan("论文阅读助手", NamedModel(), tmp_path / "named", log=quiet)
+    assert plan.runner == "mock" and plan.model == "deepseek-v4-flash"
+    assert "模型：deepseek-v4-flash" in doc.read_text(encoding="utf-8")
+    assert json.loads((tmp_path / "named" / "plan.json").read_text(encoding="utf-8"))["model"] == "deepseek-v4-flash"
+
+    plan, doc = run_plan("论文阅读助手", MockRunner(), tmp_path / "mock", log=quiet)
+    assert "模型：mock" in doc.read_text(encoding="utf-8")
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "agent.py").write_text("def loop():\n    pass\n", encoding="utf-8")
+    audit, doc = run_audit(project, NamedModel(), tmp_path / "audit", log=quiet)
+    assert audit.model == "deepseek-v4-flash" and "模型：deepseek-v4-flash" in doc.read_text(encoding="utf-8")

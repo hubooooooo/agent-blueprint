@@ -67,7 +67,8 @@ class Audit:
     completion: float
     review: dict
     inventory_brief: dict
-    runner: str = ""
+    runner: str = ""                   # 运行器：anthropic（真实调用）或 mock（离线演示）
+    model: str = ""                    # 实际用的模型
     budget: dict = field(default_factory=dict)
     mode: str = "fast"                 # agent：模型读代码核实；fast：关键词扫描
     mode_note: str = ""                # 没用上 agent 的原因（--fast、模型不支持、agent 失败）
@@ -76,6 +77,11 @@ class Audit:
     @property
     def title(self) -> str:
         return self.intent.get("title") or Path(self.root).name
+
+    @property
+    def model_label(self) -> str:
+        """报告里显示的模型：实际模型名；离线演示或旧结果没有记录时退回运行器名。"""
+        return self.model or self.runner
 
     def to_dict(self) -> dict:
         return {
@@ -91,6 +97,7 @@ class Audit:
             "review": self.review,
             "inventory": self.inventory_brief,
             "runner": self.runner,
+            "model": self.model,
             "budget": self.budget,
             "mode": self.mode,
             "mode_note": self.mode_note,
@@ -232,7 +239,8 @@ def run_audit(project: Path, runner: Runner, out_dir: Path, prd_text: str | None
     audit = Audit(root=str(project), intent=intent, prd_extract=prd_extract, components=decisions,
                   gaps=gaps, acceptance=inventory.acceptance, elements_missing=elements_missing,
                   completion=completion, review=review, inventory_brief=inventory.brief(),
-                  runner=getattr(runner, "name", ""), budget=budget.summary() if budget else {},
+                  runner=getattr(runner, "name", ""), model=getattr(runner, "model", "") or "",
+                  budget=budget.summary() if budget else {},
                   mode="agent" if findings is not None else "fast", mode_note=mode_note,
                   agent_stats=agent_stats)
     stages.save_json("audit.json", audit.to_dict())
@@ -311,7 +319,7 @@ def render_audit(audit: Audit) -> str:
     w(f"# Agent Harness 差距报告 ——「{audit.title}」")
     w("")
     w(f"> 项目路径：`{audit.root}`")
-    w(f"> 推导引擎：Agent Blueprint · 模型：{audit.runner}")
+    w(f"> 推导引擎：Agent Blueprint · 模型：{audit.model_label}")
     if audit.mode == "agent":
         w(f"> 本报告由 agent 阅读项目代码得出（读过或搜到 {audit.agent_stats.get('files_seen', 0)} 个文件），未运行被检查项目；"
           "组件现状是 agent 核实代码后的判断，「信号覆盖率」按核实结果计算，不代表生产验收通过。")

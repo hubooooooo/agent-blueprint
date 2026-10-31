@@ -111,6 +111,8 @@ export type Plan = {
   title: string
   one_liner: string
   runner: string
+  /** 实际用的模型；旧方案没有记录 */
+  model?: string
   /** 要问提出想法的人的问题（大白话），与 questions 一一对应 */
   unknowns: string[]
   questions: Question[]

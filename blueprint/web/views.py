@@ -84,6 +84,7 @@ def plan_view(plan: dict, ws: Path | None = None) -> dict:
         "title": plan.get("title", ""),
         "one_liner": plan.get("one_liner", ""),
         "runner": plan.get("runner", ""),
+        "model": plan.get("model", ""),
         "unknowns": [q["text"] for q in questions],
         "questions": questions,
         "dev_items": dev_items,

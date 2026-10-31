@@ -9,7 +9,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 ROOT_FILES = (
-    "README.md", "使用引导.md", "BLUEPRINT.md", "LICENSE",
+    "README.md", "CONTRIBUTING.md", "使用引导.md", "BLUEPRINT.md", "LICENSE",
     "requirements.txt", "setup.sh", ".env.example", ".gitignore",
     "启动引擎.command", "启动界面.command",
 )
@@ -24,10 +24,10 @@ PATTERNS = (
     "s[0-9][0-9]_*/s[0-9][0-9]_parts/p[0-9][0-9]_*.py",
     "scaffold/*.py", "scaffold/*.md", "scaffold/*.yaml", "scaffold/requirements.txt", "scaffold/.env.example",
     "skills/*/SKILL.md", "skills/*/references/*.md", "skills/*/references/*.py", "skills/*/scripts/*.py",
-    "evals/forward/*/input.md", "evals/forward/*/expected.json",
+    "evals/README.md", "evals/forward/*/input.md", "evals/forward/*/expected.json",
     "evals/reverse/*/expected.json", "evals/reverse/*/target.txt",
     "evals/reverse/*/README.md", "evals/reverse/*/src/*.py",
-    "tests/test_*.py", "tools/package_student.py", "tools/wizard.py", "tools/mac_env.sh",
+    "tests/test_*.py", "tools/package_student.py", "tools/wizard.py", "tools/mac_env.sh", "tools/refresh_examples.py",
 )
 
 

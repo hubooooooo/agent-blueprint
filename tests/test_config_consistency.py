@@ -2,6 +2,8 @@
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -37,8 +39,10 @@ def test_default_model_is_consistent_everywhere():
 def test_requirements_include_pytest_and_ci_does_not_reinstall_it():
     reqs = (ROOT / "requirements.txt").read_text(encoding="utf-8")
     assert re.search(r"^pytest==", reqs, re.M), "pytest 应锁定在 requirements.txt 中"
-    ci = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
-    assert "requirements.txt pytest" not in ci
+    ci_path = ROOT / ".github/workflows/test.yml"
+    if not ci_path.is_file():
+        pytest.skip("学生包不带 CI 配置")
+    assert "requirements.txt pytest" not in ci_path.read_text(encoding="utf-8")
 
 
 def test_student_package_ships_common_bootstrap():

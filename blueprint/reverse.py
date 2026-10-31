@@ -226,7 +226,7 @@ def render_audit(audit: Audit) -> str:
     w(f"# Agent Harness 差距报告 ——「{audit.title}」")
     w("")
     w(f"> 项目路径：`{audit.root}`")
-    w(f"> 推导引擎：Agent Blueprint · 模型：{audit.model_label}")
+    w(f"> 推导引擎：Agent 工坊 · 模型：{audit.model_label}")
     w("> 本报告基于静态扫描线索，未运行被检查项目；「信号覆盖率」只是静态扫描命中了多少必选组件的关键词信号，不是功能完成度，更不代表生产验收通过。")
     if audit.runner == "mock":
         w("> 离线演示：文字与审稿为占位结果，未进行真实模型语义判断。")
@@ -348,7 +348,7 @@ def render_should_have_prd(audit: Audit) -> str:
     intent = audit.prd_extract or audit.intent
     facts = intent.get("facts", {})
     out = [f"# {audit.title}", "", f"> {intent.get('one_liner', '')}", "",
-           "本文档由 Agent Blueprint 反向推导生成：这是该项目「本该有」的需求描述。请核对并补全「待确认」项，然后交给 `blueprint plan`。", ""]
+           "本文档由 Agent 工坊 反向推导生成：这是该项目「本该有」的需求描述。请核对并补全「待确认」项，然后交给 `blueprint plan`。", ""]
     for key, label in FACT_KEYS.items():
         f = facts.get(key, {})
         out.append(f"## {label.split('：')[0]}")

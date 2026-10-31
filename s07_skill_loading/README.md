@@ -121,7 +121,7 @@ def load(self, name: str) -> str:
 ## 试一下
 
 ```sh
-cd agent-blueprint
+cd agent-workshop
 python s07_skill_loading/code.py
 ```
 

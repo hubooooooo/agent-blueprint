@@ -99,7 +99,7 @@ def render_plan(plan: "Plan") -> str:
     w("")
     status = "方案待确认" if review.get("ok") else "方案待确认（审稿未完全通过，见文末审稿意见）"
     w(f"> 状态：{status}（Step 1–4 已完成，Step 5 代码生成需确认后启动）")
-    w(f"> 推导引擎：Agent Blueprint · 模型：{plan.model_label}")
+    w(f"> 推导引擎：Agent 工坊 · 模型：{plan.model_label}")
     if plan.runner == "mock":
         w("> 离线演示：方案与审稿为占位结果，仅用于预览流程，不能作为真实产品决策依据。")
         w(">")

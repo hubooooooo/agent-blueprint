@@ -214,7 +214,7 @@ MCP 负责外部能力：
 ## 试一下
 
 ```sh
-cd agent-blueprint
+cd agent-workshop
 python s15_integrated_harness/code.py
 ```
 

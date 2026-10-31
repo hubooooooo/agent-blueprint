@@ -133,7 +133,7 @@ for block in tool_calls:
 ## 试一下
 
 ```sh
-cd agent-blueprint
+cd agent-workshop
 python s03_permission/code.py
 ```
 

@@ -61,7 +61,7 @@ def package(root: Path, output: Path) -> tuple[int, int]:
     try:
         with ZipFile(temporary, "w", compression=ZIP_DEFLATED, compresslevel=9) as archive:
             for path in files:
-                archive.write(path, "agent-blueprint/" + path.relative_to(root).as_posix())
+                archive.write(path, "agent-workshop/" + path.relative_to(root).as_posix())
         os.replace(temporary, output)
     finally:
         Path(temporary).unlink(missing_ok=True)
@@ -70,7 +70,7 @@ def package(root: Path, output: Path) -> tuple[int, int]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("-o", "--out", type=Path, default=ROOT / "dist/agent-blueprint-student.zip")
+    parser.add_argument("-o", "--out", type=Path, default=ROOT / "dist/agent-workshop-student.zip")
     args = parser.parse_args()
     try:
         count, size = package(ROOT, args.out)

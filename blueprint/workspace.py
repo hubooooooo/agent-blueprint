@@ -44,6 +44,19 @@ def _today() -> str:
     return time.strftime("%Y-%m-%d")
 
 
+# PRD 模板里写给人和 AI 工具看的说明（工作区规矩、迭代方式、各节的括号提示）。它们不是需求，
+# 原样交给推导会被拆成「约束」和工具，还会冒出「工作区写文件算不算工具」这类怪问题。
+_TEMPLATE_ROW = re.compile(r"(?m)^\|\s*(工作区|迭代方式)\s*\|.*\n?")
+
+
+def derivation_text(prd_text: str) -> str:
+    """交给推导和验收的 PRD：去掉模板说明，用户写的内容一字不动。"""
+    notes = {l.strip() for l in PRD_TEMPLATE.splitlines() if l.strip().startswith("（") and l.strip().endswith("）")}
+    text = _TEMPLATE_ROW.sub("", prd_text)
+    text = "\n".join(l for l in text.split("\n") if l.strip() not in notes)
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
 PRD_TEMPLATE = """# PRD —— {name}
 
 | 项 | 内容 |
@@ -245,6 +258,7 @@ def quick_reselect(prd_text: str, runner, ws: Path, log: Callable[[str], None] =
     from blueprint.pipeline import StageRunner
     from blueprint.rules import select_components
     from blueprint.schema import EXTRACT_SCHEMA
+    prd_text = derivation_text(prd_text)        # 与 run_plan 同口径，缓存才能互通
     stages = StageRunner(runner, ws, resume=True, log=log, context={"kind": "plan", "input": prd_text})
     stages.save("input.md", prd_text)
     extract = stages.run("extract", load_prompt("extract").format(
@@ -306,7 +320,8 @@ def revise_workspace(ws: Path, requirement: str, runner=None, run_plan_flag: boo
                 lines.append("骨架待办：" + "；".join(todo))
         else:
             lines.append("选型变化：无（新需求没有改变组件选型，只需在 skeleton/ 内改工具或提示词）")
-        lines.append(f"待确认：{result['unknowns']} 条，见 方案.md 开头；回答写进 PRD.md 第 6 节")
+        from blueprint.render import pending_summary
+        lines.append(f"待确认：{pending_summary(plan) or '无'}，见 方案.md 开头；回答写进 PRD.md 第 6 节")
     else:
         lines.append("本轮未重推方案（--no-plan）；需要时运行 "
                      f"`blueprint plan out/{ws.name}/PRD.md -o out/{ws.name} --resume`")
@@ -324,7 +339,10 @@ def verify_workspace(ws: Path, runner, log: Callable[[str], None] = print):
     if not code_files:
         raise ValueError(f"{skeleton} 里还没有代码，先让 AI 按 方案.md 生成骨架再验证。")
     from blueprint.reverse import run_audit
-    audit, doc = run_audit(skeleton, runner, ws / VERIFY_DIR, prd_text=prd_text, resume=False, log=log)
+    plan_path = ws / "plan.json"
+    expected = json.loads(plan_path.read_text(encoding="utf-8")).get("components") if plan_path.is_file() else None
+    audit, doc = run_audit(skeleton, runner, ws / VERIFY_DIR, prd_text=derivation_text(prd_text), resume=False,
+                           log=log, expected=expected or None)
     p0 = [f"{g.id} {g.name}" for g in audit.gaps if g.priority == "P0"]
     lines = [f"对照 PRD V{current_version(prd_text)} 检查 skeleton/：必选组件信号覆盖率 {int(audit.completion * 100)}%",
              f"报告：{doc}"]

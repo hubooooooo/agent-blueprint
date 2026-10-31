@@ -15,12 +15,12 @@
 {components_json}
 
 ## 要求
-1. tool_list：3 到 8 个工具。每个工具给出名称（英文 snake_case）、输入、输出、副作用、权限（allow / ask / deny）、归属层（①到⑦之一）。工具必须能从五要素的「工具」和「行动」条目推出来。
+1. tool_list：3 到 8 个工具。每个工具给出名称（英文 snake_case）、输入、输出、副作用、权限（allow / ask / deny）、归属层（按标准七层填 ①到⑦之一：①交互层 ②产品层 ③Agent 编排层 ④模型层 ⑤能力集成层 ⑥数据层 ⑦基础设施层；调外部系统、知识库、第三方 API 的工具归⑤，读写需要持久化的数据的归⑥）。工具必须能从五要素的「工具」和「行动」条目推出来。
 2. system_prompt：系统提示词草案，包含身份、规则（至少含边界与质量底线）、工具说明、知识目录。100 到 400 字。
 3. context_memory_strategy：会话内如何管理上下文，跨会话是否持久化、持久化什么。
 4. security_and_degradation：3 到 8 条，每条形如「场景 → 处理方式」。必须覆盖：工具失败、模型幻觉、超时、越权。
 5. observability：logs / metrics 各 2 到 5 条，trajectory 一句话说明轨迹数据怎么记。
-6. tech_stack_and_deployment：第一版的部署形态（单进程 / 服务 / 团队）、语言、模型来源。
+6. tech_stack_and_deployment：第一版的部署形态（单进程 / 服务 / 团队）、语言、模型来源。提到分层时沿用上面七层的名称和编号，不要另起一套编号。
 7. open_questions：设计过程中发现的新的待确认问题（可为空数组）。
 {review_feedback}
 

@@ -146,3 +146,43 @@ def test_real_eval_differences_fail_exit_status(monkeypatch, capsys):
         monkeypatch.setattr(evals.tempfile, "mkdtemp", lambda **_: directory)
         assert evals.run_evals(real=True, runner_factory=MockRunner) == 1
     assert "项失败" in capsys.readouterr().out
+
+
+def test_reports_show_actual_model_not_runner_name(tmp_path):
+    """报告里的「模型」要写实际模型（如 deepseek-v4-flash），不能写运行器名 anthropic；离线演示仍写 mock。"""
+    class NamedModel(MockRunner):
+        model = "deepseek-v4-flash"
+
+    plan, doc = run_plan("论文阅读助手", NamedModel(), tmp_path / "named", log=quiet)
+    assert plan.runner == "mock" and plan.model == "deepseek-v4-flash"
+    assert "模型：deepseek-v4-flash" in doc.read_text(encoding="utf-8")
+    plan, doc = run_plan("论文阅读助手", MockRunner(), tmp_path / "mock", log=quiet)
+    assert "模型：mock" in doc.read_text(encoding="utf-8")
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "agent.py").write_text("def loop():\n    pass\n", encoding="utf-8")
+    audit, doc = run_audit(project, NamedModel(), tmp_path / "audit", log=quiet)
+    assert audit.model == "deepseek-v4-flash" and "模型：deepseek-v4-flash" in doc.read_text(encoding="utf-8")
+
+
+def test_pending_list_groups_match_terminal_summary(tmp_path):
+    """待确认清单按来源分组、编号连续；终端提示的条数与清单一致，不再只数需求问题。"""
+    from blueprint.render import OPENS_HEADING, pending_groups, pending_summary, render_plan
+    plan, _doc = run_plan("每天定时整理邮件并提醒我", MockRunner(), tmp_path, log=quiet)
+    plan.design["open_questions"] = ["邮件存哪里？", "要不要支持多个邮箱？"]
+    block = render_plan(plan).split("## ⚠️ 待确认清单", 1)[1].split("\n## ", 1)[0]
+    needs, opens, comps = pending_groups(plan)
+    numbers = [int(l.split(".", 1)[0]) for l in block.splitlines() if l[:1].isdigit()]
+    assert numbers == list(range(1, len(needs) + len(opens) + len(comps) + 1)) and OPENS_HEADING in block
+    assert "2 个方案留下的问题" in pending_summary(plan)
+
+
+def test_architecture_diagram_reads_layer_names_and_stays_short():
+    """归属层写成「⑤能力集成层」也要进第 ⑤ 层；第 ⑦ 层只放部署说明的第一句；原文里不出现 #38; 这类转义。"""
+    from blueprint.render import architecture_nodes, render_mermaid
+    tools = [{"name": "search_menu", "layer": "⑤能力集成层"}, {"name": "save_order", "layer": "6 数据层"}]
+    nodes = dict(architecture_nodes([], tools, "第一版部署形态：单进程服务。" + "很长的说明" * 50))
+    assert nodes["⑤ 能力集成层"] == "search_menu" and nodes["⑥ 数据层"] == "save_order"
+    assert nodes["⑦ 基础设施层"] == "第一版部署形态：单进程服务"
+    chart = render_mermaid("t", [], tools, {}, "A & B <c>")
+    assert "#38;" not in chart and "A ＆ B ＜c＞" in chart

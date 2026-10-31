@@ -63,12 +63,19 @@ class Audit:
     completion: float
     review: dict
     inventory_brief: dict
-    runner: str = ""
+    runner: str = ""                   # 运行器：anthropic（真实调用）或 mock（离线演示）
+    model: str = ""                    # 实际用的模型
     budget: dict = field(default_factory=dict)
+    basis: str = ""                    # 「应有」组件的来源：plan（方案.md 的选型）、prd 或空（反推）
 
     @property
     def title(self) -> str:
         return self.intent.get("title") or Path(self.root).name
+
+    @property
+    def model_label(self) -> str:
+        """报告里显示的模型：实际模型名；离线演示或旧结果没有记录时退回运行器名。"""
+        return self.model or self.runner
 
     def to_dict(self) -> dict:
         return {
@@ -84,6 +91,8 @@ class Audit:
             "review": self.review,
             "inventory": self.inventory_brief,
             "runner": self.runner,
+            "model": self.model,
+            "basis": self.basis,
             "budget": self.budget,
         }
 
@@ -128,7 +137,10 @@ def _elements_missing(intent: dict, inventory: Inventory) -> list[str]:
 
 
 def run_audit(project: Path, runner: Runner, out_dir: Path, prd_text: str | None = None,
-              resume: bool = False, log: Callable[[str], None] = print) -> tuple[Audit, Path]:
+              resume: bool = False, log: Callable[[str], None] = print,
+              expected: list[dict] | None = None) -> tuple[Audit, Path]:
+    """expected：已经定好的选型（产品工作区里 方案.md 的组件选型）。给了就按它对照，不再从 PRD 重新判断特征，
+    验收和写骨架时依据的方案才一致；PRD 仍会拆解，用来对照事实。"""
     project = Path(project).resolve()
     if not project.is_dir():
         raise FileNotFoundError(f"项目目录不存在：{project}")
@@ -153,7 +165,9 @@ def run_audit(project: Path, runner: Runner, out_dir: Path, prd_text: str | None
         features = prd_extract.get("features", {})
 
     log("  ▶ ③ 算出它应该有什么（规则）")
-    decisions = [d.to_dict() for d in select_components(features)]
+    decisions = [dict(d) for d in expected] if expected is not None \
+        else [d.to_dict() for d in select_components(features)]
+    basis = "plan" if expected is not None else ("prd" if prd_text else "")
     stages.save_json("stages/select.json", {"components": decisions})
 
     log("  ▶ ④ 对照打分")
@@ -172,7 +186,8 @@ def run_audit(project: Path, runner: Runner, out_dir: Path, prd_text: str | None
     audit = Audit(root=str(project), intent=intent, prd_extract=prd_extract, components=decisions,
                   gaps=gaps, acceptance=inventory.acceptance, elements_missing=elements_missing,
                   completion=completion, review=review, inventory_brief=inventory.brief(),
-                  runner=getattr(runner, "name", ""), budget=budget.summary() if budget else {})
+                  runner=getattr(runner, "name", ""), model=getattr(runner, "model", "") or "",
+                  budget=budget.summary() if budget else {}, basis=basis)
     stages.save_json("audit.json", audit.to_dict())
     stages.save("本该有的PRD.md", render_should_have_prd(audit))
     doc_path = stages.save("差距报告.md", render_audit(audit))
@@ -209,14 +224,16 @@ def render_audit(audit: Audit) -> str:
     w(f"# Agent Harness 差距报告 ——「{audit.title}」")
     w("")
     w(f"> 项目路径：`{audit.root}`")
-    w(f"> 推导引擎：Agent Blueprint · 模型：{audit.runner}")
+    w(f"> 推导引擎：Agent Blueprint · 模型：{audit.model_label}")
     w("> 本报告基于静态扫描线索，未运行被检查项目；「信号覆盖率」只是静态扫描命中了多少必选组件的关键词信号，不是功能完成度，更不代表生产验收通过。")
     if audit.runner == "mock":
         w("> 离线演示：文字与审稿为占位结果，未进行真实模型语义判断。")
         w(">")
         w("> ⚠️ **本报告由 `--mock` 生成，没有调用模型。** 「应有」一列按关键词占位，意图反推多为空白；")
         w("> 配置好 `.env` 后去掉 `--mock` 重新运行，才能得到可用于决策的差距报告。")
-    if audit.prd_extract:
+    if audit.basis == "plan":
+        w("> 对照依据：方案.md 的组件选型（写骨架时依据的同一份方案）；事实对照 PRD")
+    elif audit.prd_extract:
         w("> 对照依据：用户提供的 PRD（组件「应有」按 PRD 判定）")
     w("")
     w("## 一句话判定")
@@ -228,11 +245,15 @@ def render_audit(audit: Audit) -> str:
     w(_cell(intent.get("product_summary")) or _cell(intent.get("one_liner")))
     w("")
     facts = intent.get("facts", {})
+    prd_facts = (audit.prd_extract or {}).get("facts", {})
     w("| 维度 | 反推结论 | 状态 |")
     w("|---|---|---|")
     for key, label in FACT_KEYS.items():
         f = facts.get(key, {})
-        w(f"| {label.split('：')[0]} | {_cell(f.get('value')) or '（空）'} | {f.get('status', '待确认')} |")
+        status = f.get("status", "待确认")
+        if status == "明确" and audit.prd_extract and prd_facts.get(key, {}).get("status") != "明确":
+            status = "按默认假设实现（PRD 待确认）"      # 代码里写死了，不等于需求定了
+        w(f"| {label.split('：')[0]} | {_cell(f.get('value')) or '（空）'} | {status} |")
     w("")
 
     w("## 组件差距表（按优先级）")

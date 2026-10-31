@@ -25,12 +25,18 @@ class Plan:
     design: dict
     review: dict
     design_attempts: int = 1
-    runner: str = ""
+    runner: str = ""                   # 运行器：anthropic（真实调用）或 mock（离线演示）
+    model: str = ""                    # 实际用的模型，例如 deepseek-v4-flash
     budget: dict = field(default_factory=dict)
 
     @property
     def title(self) -> str:
         return self.extract.get("title") or "未命名产品"
+
+    @property
+    def model_label(self) -> str:
+        """报告里显示的模型：实际模型名；离线演示或旧结果没有记录时退回运行器名。"""
+        return self.model or self.runner
 
     def to_dict(self) -> dict:
         return {
@@ -45,6 +51,7 @@ class Plan:
             "review": self.review,
             "design_attempts": self.design_attempts,
             "runner": self.runner,
+            "model": self.model,
             "budget": self.budget,
         }
 
@@ -76,6 +83,8 @@ def _dump(data) -> str:
 def run_plan(input_text: str, runner: Runner, out_dir: Path, resume: bool = False,
              log: Callable[[str], None] = print) -> tuple[Plan, Path]:
     """执行五步推导，返回 Plan 与 方案.md 的路径。"""
+    from blueprint.workspace import derivation_text
+    input_text = derivation_text(input_text)     # PRD 模板里的说明不当输入
     if not input_text.strip():
         raise ValueError("点子或 PRD 不能为空")
     stages = StageRunner(runner, out_dir, resume=resume, log=log,
@@ -122,7 +131,7 @@ def run_plan(input_text: str, runner: Runner, out_dir: Path, resume: bool = Fals
     budget = getattr(runner, "budget", None)
     plan = Plan(input_text=input_text, extract=extract, elements=elements, components=decisions,
                 design=design, review=review, design_attempts=attempts,
-                runner=getattr(runner, "name", ""),
+                runner=getattr(runner, "name", ""), model=getattr(runner, "model", "") or "",
                 budget=budget.summary() if budget else {})
     stages.save_json("plan.json", plan.to_dict())
     doc_path = stages.save("方案.md", render_plan(plan))

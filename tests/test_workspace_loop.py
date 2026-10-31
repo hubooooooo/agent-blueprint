@@ -101,6 +101,59 @@ def test_verify_audits_skeleton_against_prd(tmp_path):
     assert "· 验证" in (ws / "迭代记录.md").read_text(encoding="utf-8")
 
 
+def test_template_notes_are_not_derivation_input(tmp_path):
+    """模板里的工作区规矩、迭代方式和括号提示不是需求，交给推导前要去掉；用户写的内容一字不动。"""
+    from blueprint.forward import run_plan
+    from blueprint.workspace import derivation_text
+    ws = _init(tmp_path)
+    prd = (ws / "PRD.md").read_text(encoding="utf-8")
+    prd = prd.replace("## 4. 边界与红线\n", "## 4. 边界与红线\n\n（用户写的括号备注）\n- 不能删邮件\n")
+    text = derivation_text(prd)
+    for note in ("不要写到别处", "迭代方式", "由 AI 按 BLUEPRINT.md"):
+        assert note not in text
+    for kept in ("一个帮我每天整理邮件的助手", "| 当前版本 | V1 |", "（用户写的括号备注）", "- 不能删邮件", PENDING_HEADING):
+        assert kept in text
+    run_plan(prd, MockRunner(), ws, log=quiet)
+    assert (ws / "input.md").read_text(encoding="utf-8") == text
+
+
+def test_verify_checks_skeleton_against_plan_selection(tmp_path):
+    """验收按 方案.md 的组件选型对照（写骨架时依据的那份），不再从 PRD 重判；方案里待确认的不能变成必选 P0。"""
+    from blueprint.forward import run_plan
+    ws = _init(tmp_path)
+    run_plan((ws / "PRD.md").read_text(encoding="utf-8"), MockRunner(), ws, log=quiet)
+    plan = json.loads((ws / "plan.json").read_text(encoding="utf-8"))
+    for c in plan["components"]:
+        if c["id"] == "s07":
+            c["decision"] = "待确认"
+    (ws / "plan.json").write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+    (ws / "skeleton" / "agent.py").write_text("def loop():\n    pass\n", encoding="utf-8")
+    audit, doc = verify_workspace(ws, MockRunner(), log=quiet)
+    assert audit.basis == "plan"
+    assert {c["id"]: c["decision"] for c in audit.components} == {c["id"]: c["decision"] for c in plan["components"]}
+    assert not any(g.id == "s07" and g.priority == "P0" for g in audit.gaps)
+    assert "方案.md 的组件选型" in doc.read_text(encoding="utf-8")
+
+
+def test_assumed_facts_are_not_reported_as_settled():
+    """PRD 里待确认的事，骨架按默认假设写死了，报告也不能写成「明确」。"""
+    from blueprint.reverse import Audit, render_audit
+    audit = Audit(root="/x", intent={"facts": {"boundaries": {"value": "不保存手机号", "status": "明确"}}},
+                  prd_extract={"facts": {"boundaries": {"status": "待确认"}}}, components=[], gaps=[],
+                  acceptance={}, elements_missing=[], completion=0.0, review={}, inventory_brief={},
+                  runner="anthropic")
+    assert "按默认假设实现（PRD 待确认）" in render_audit(audit)
+
+
+def test_background_signal_ignores_queued_words():
+    """s11 后台任务不能因为代码里有 queued、cron_queue 这类词就被扫描命中。"""
+    import re
+    from blueprint.knowledge import COMPONENT_BY_ID
+    hit = lambda line: any(re.search(sig, line) for sig in COMPONENT_BY_ID["s11"].signals)
+    assert not hit('status = "queued"') and not hit("self.cron_queue.append(job)")
+    assert hit("q = queue.Queue()") and hit("jobs = asyncio.Queue()")
+
+
 def test_component_diff_lists_changes_only():
     assert component_diff({"s03": "待确认", "s04": "必选"}, {"s03": "必选", "s04": "必选"}) == [("s03", "待确认", "必选")]
 

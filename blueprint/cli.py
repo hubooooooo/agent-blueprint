@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = Path(os.environ.get("BLUEPRINT_OUT") or ROOT / "out")
 
 
+from blueprint.render import pending_summary  # noqa: E402
 from blueprint.workspace import slugify as _slug  # noqa: E402
 
 
@@ -53,9 +54,9 @@ def cmd_plan(args) -> int:
     print(f"正向推导：{name} → {out_dir}")
     plan, doc = run_plan(text, make_runner(args), out_dir, resume=args.resume)
     print(f"\n✅ 方案已生成：{doc}")
-    unknowns = len(plan.extract.get("unknowns", []))
-    if unknowns:
-        print(f"⚠️  有 {unknowns} 个待确认问题，见文档开头。")
+    pending = pending_summary(plan)
+    if pending:
+        print(f"⚠️  待确认：{pending}，见文档开头的待确认清单。")
     _log_plan_in_workspace(out_dir, plan, doc)
     return 0
 
@@ -68,9 +69,9 @@ def _log_plan_in_workspace(out_dir: Path, plan, doc: Path) -> None:
     version = current_version(read_prd(out_dir))
     must = [c["id"] for c in plan.components if c["decision"] == "必选"]
     append_log(out_dir, f"V{version} · 方案推导", [
-        f"方案：{doc.name}（模型 {plan.runner}，审稿{'通过' if plan.review.get('ok') else '未完全通过，见文末意见'}）",
+        f"方案：{doc.name}（模型 {plan.model_label}，审稿{'通过' if plan.review.get('ok') else '未完全通过，见文末意见'}）",
         f"必选组件：{'、'.join(must)}",
-        f"待确认：{len(plan.extract.get('unknowns', []))} 条，回答写进 PRD.md 第 6 节",
+        f"待确认：{pending_summary(plan) or '无'}，见 方案.md 开头；回答写进 PRD.md 第 6 节",
         "人工验证结论：（待填）",
     ])
 
@@ -112,9 +113,9 @@ def cmd_init(args) -> int:
             return 3
         _log_plan_in_workspace(ws, plan, doc)
         print(f"\n✅ 方案已生成：{doc}")
-        unknowns = len(plan.extract.get("unknowns", []))
-        if unknowns:
-            print(f"⚠️  有 {unknowns} 个待确认问题，回答后写进 PRD.md 第 6 节。")
+        pending = pending_summary(plan)
+        if pending:
+            print(f"⚠️  待确认：{pending}，见 方案.md 开头；回答后写进 PRD.md 第 6 节。")
     else:
         print(f"\n下一步：.venv/bin/python -m blueprint plan \"{ws / 'PRD.md'}\" -o \"{ws}\"")
     return 0

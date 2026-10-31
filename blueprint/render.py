@@ -23,23 +23,36 @@ def _components_in_layer3(components: list[dict]) -> str:
     return " + ".join(f"{d['id']} {d['name']}" for d in chosen) or "loop + 工具"
 
 
+def _brief(text, limit: int = 60) -> str:
+    """长段落的第一句，图和表格里只放摘要，全文在「技术栈与部署形态」一节。"""
+    text = _cell(text)
+    first = text.split("。", 1)[0]
+    return first if len(first) <= limit else first[:limit].rstrip("，、；：,;: ") + "…"
+
+
+def _tools_in_layer(tool_list: list[dict], num: str, digit: str) -> str:
+    # 模型常写成「⑤能力集成层」「5 能力集成层」，按开头的编号认
+    return "、".join(t["name"] for t in tool_list if str(t.get("layer", "")).strip().startswith((num, digit)))
+
+
 def architecture_nodes(components: list[dict], tool_list: list[dict], deployment: str) -> list[tuple[str, str]]:
     return [
         ("① 交互层", "CLI / Web / App · 同步或异步（按需求确认）"),
         ("② 产品层", "会话管理 · 请求路由 · 业务逻辑"),
         ("③ Agent 编排层", _components_in_layer3(components)),
         ("④ 模型层", "主模型 · fallback · 成本控制"),
-        ("⑤ 能力集成层", "、".join(t["name"] for t in tool_list if t.get("layer") in ("⑤", "5")) or "领域工具"),
-        ("⑥ 数据层", "、".join(t["name"] for t in tool_list if t.get("layer") in ("⑥", "6")) or "会话历史 · 轨迹数据 · 日志指标"),
-        ("⑦ 基础设施层", deployment or "部署形态待确认"),
+        ("⑤ 能力集成层", _tools_in_layer(tool_list, "⑤", "5") or "领域工具"),
+        ("⑥ 数据层", _tools_in_layer(tool_list, "⑥", "6") or "会话历史 · 轨迹数据 · 日志指标"),
+        ("⑦ 基础设施层", _brief(deployment, 40) or "部署形态待确认"),
     ]
 
 
 def render_mermaid(title: str, components: list[dict], tool_list: list[dict],
                    facts: dict, deployment: str) -> str:
     def escape(text: str) -> str:
-        return (_cell(text).replace("&", "#38;").replace('"', "#34;")
-                .replace("<", "#60;").replace(">", "#62;"))
+        # 换成全角：Mermaid 的 #38; 这类转义能渲染，但直接读原文像乱码
+        return (_cell(text).replace("&", "＆").replace('"', "＂")
+                .replace("<", "＜").replace(">", "＞"))
 
     users = _cell(facts.get("users", {}).get("value")) or "用户（待确认）"
     lines = ["```mermaid", "flowchart TD", f'    U["{escape(users[:60])}"] -->|输入 / 阅读交付物| L1']
@@ -50,6 +63,27 @@ def render_mermaid(title: str, components: list[dict], tool_list: list[dict],
               '        SEC["安全边界：权限审批 · 数据红线 · 审计"]',
               '        OBS["可观测性：日志 · 指标 · 轨迹"]', "    end", "```"]
     return "\n".join(lines)
+
+
+NEEDS_HEADING = "**需求问题**：请提出想法的人回答，这几条最要紧。"
+OPENS_HEADING = "**方案推导时留下的问题**：多是上面问题的细化，也有写给开发者的备注。先答上面的，这里能答的再补。"
+COMPONENTS_HEADING = "**待确认的组件**：要不要用，取决于后面这个问题。"
+
+
+def pending_groups(plan: "Plan") -> tuple[list[str], list[str], list[dict]]:
+    """待确认清单的三组：需求问题、方案留下的问题、待确认的组件。"""
+    return (list(plan.extract.get("unknowns", [])), list(plan.design.get("open_questions", []) or []),
+            [d for d in plan.components if d["decision"] == "待确认"])
+
+
+def pending_summary(plan: "Plan") -> str:
+    """终端和迭代记录里的一句话，条数与 方案.md 的待确认清单一致；没有待确认项时返回空串。"""
+    needs, opens, comps = pending_groups(plan)
+    extra = "、".join(s for s in (f"{len(opens)} 个方案留下的问题" if opens else "",
+                                  f"{len(comps)} 个待确认组件" if comps else "") if s)
+    if needs:
+        return f"{len(needs)} 个需求问题要回答" + (f"（另有 {extra}）" if extra else "")
+    return f"另有 {extra}" if extra else ""
 
 
 def render_plan(plan: "Plan") -> str:
@@ -65,7 +99,7 @@ def render_plan(plan: "Plan") -> str:
     w("")
     status = "方案待确认" if review.get("ok") else "方案待确认（审稿未完全通过，见文末审稿意见）"
     w(f"> 状态：{status}（Step 1–4 已完成，Step 5 代码生成需确认后启动）")
-    w(f"> 推导引擎：Agent Blueprint · 模型：{plan.runner}")
+    w(f"> 推导引擎：Agent Blueprint · 模型：{plan.model_label}")
     if plan.runner == "mock":
         w("> 离线演示：方案与审稿为占位结果，仅用于预览流程，不能作为真实产品决策依据。")
         w(">")
@@ -78,21 +112,29 @@ def render_plan(plan: "Plan") -> str:
     w(f"**{plan.title}**：{ex.get('one_liner', '')}")
     w("")
 
-    # 待确认清单放前面，小白最先要看的就是这个
-    unknowns = list(ex.get("unknowns", [])) + list(design.get("open_questions", []) or [])
-    pending_components = [d for d in plan.components if d["decision"] == "待确认"]
+    # 待确认清单放前面，小白最先要看的就是这个。按来源分三组，编号连续，终端提示的条数与这里一致
+    needs, opens, pending_components = pending_groups(plan)
     w("## ⚠️ 待确认清单（答不上就是风险点）")
     w("")
-    if not unknowns and not pending_components:
+    if not (needs or opens or pending_components):
         w("输入信息完整，无待确认项。")
+        w("")
     n = 0
-    for q in unknowns:
-        n += 1
-        w(f"{n}. {q}")
-    for d in pending_components:
-        n += 1
-        w(f"{n}. 【组件 {d['id']} {d['name']}】{describe_feature(d.get('feature', ''))}")
-    w("")
+    for heading, items in ((NEEDS_HEADING, needs), (OPENS_HEADING, opens)):
+        if items:
+            w(heading)
+            w("")
+            for q in items:
+                n += 1
+                w(f"{n}. {q}")
+            w("")
+    if pending_components:
+        w(COMPONENTS_HEADING)
+        w("")
+        for d in pending_components:
+            n += 1
+            w(f"{n}. 【组件 {d['id']} {d['name']}】{describe_feature(d.get('feature', ''))}")
+        w("")
 
     w("## Step 1 · 需求拆解（提取硬事实）")
     w("")
@@ -187,11 +229,11 @@ def render_plan(plan: "Plan") -> str:
     w("| 标准 | 要求 | 本方案的对应设计 |")
     w("|---|---|---|")
     mapping = {
-        "runnable": design.get("tech_stack_and_deployment", ""),
+        "runnable": _brief(design.get("tech_stack_and_deployment", ""), 80),
         "fault_tolerant": "；".join(design.get("security_and_degradation", [])[:3]),
         "observable": "；".join(obs.get("logs", [])[:2] + obs.get("metrics", [])[:2]),
         "testable": "Step 5 骨架层需附核心循环与权限边界的单测",
-        "deployable": design.get("tech_stack_and_deployment", ""),
+        "deployable": "见上文「技术栈与部署形态」" if design.get("tech_stack_and_deployment") else "",
         "measurable": "；".join(obs.get("metrics", [])),
     }
     for key, (name, desc) in ACCEPTANCE.items():

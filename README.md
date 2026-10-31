@@ -20,7 +20,7 @@
 
 | 名称 | 是什么 | 适合 | 下载 |
 |---|---|---|---|
-| **教学版**（本页） | 没有网页界面：项目文件夹、Python 引擎和命令行。用 AI 编程工具打开文件夹，让它全局阅读项目，再按引导一步步带你做到骨架验收 | 课堂上跟着老师学，看清项目里有什么、每一步怎么跑起来 | [去下载页](https://github.com/hubooooooo/agent-workshop/releases) |
+| **教学版**（本页） | 没有网页界面：项目文件夹、Python 引擎和命令行。用 AI 编程工具打开文件夹，让它全局阅读项目，再按引导一步步带你做到骨架验收 | 课堂上跟着老师学，看清项目里有什么、每一步怎么跑起来 | [下载](https://github.com/hubooooooo/agent-workshop/releases/tag/teaching) · [浏览源码](https://github.com/hubooooooo/agent-workshop/tree/v1-maint) |
 | **网页版** | 在教学版的基础上加了本地网页界面：对话式新建产品、回答问题、试玩、导出交接包、检查外部项目 | 想直接用的普通用户：下载后双击启动，在网页上操作 | [下载](https://github.com/hubooooooo/agent-workshop/releases/latest) · [网页版的 README](https://github.com/hubooooooo/agent-workshop/blob/main/README.md) |
 
 两个版本都下载到自己电脑上运行，不是网站。

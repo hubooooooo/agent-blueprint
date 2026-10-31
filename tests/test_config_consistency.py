@@ -50,3 +50,5 @@ def test_student_package_ships_common_bootstrap():
     assert "common/bootstrap.py" in names
     assert "common/__init__.py" in names
     assert {"AGENTS.md", "CLAUDE.md"} <= names, "学生包要带上给 AI 的说明"
+    readme_links = {"CONTRIBUTING.md", "evals/README.md", "tools/refresh_examples.py"}
+    assert readme_links <= names, "README 引用的文件要进学生包"

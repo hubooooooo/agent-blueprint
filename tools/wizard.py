@@ -22,7 +22,14 @@ PROVIDERS = {
           "model": "MiniMax-M3", "key_page": "https://platform.minimax.io"},
     "5": {"key": "anthropic", "name": "Anthropic 官方", "base": None,
           "model": "claude-sonnet-4-6", "key_page": "https://console.anthropic.com"},
+    "6": {"key": "openai", "name": "OpenAI（GPT）", "base": None, "format": "openai",
+          "model": "gpt-6-luna", "key_page": "https://platform.openai.com/api-keys"},
+    "7": {"key": "openai-compat", "name": "OpenAI 格式的中转或其他服务", "base": None, "format": "openai",
+          "custom_base": True, "model": "gpt-6-luna", "key_page": ""},
 }
+# format：接口格式，没写就是 anthropic；openai 走 OpenAI Chat Completions（blueprint/openai_compat.py）
+for _p in PROVIDERS.values():
+    _p.setdefault("format", "anthropic")
 
 LINE = "—" * 46
 
@@ -65,23 +72,24 @@ def read_env() -> dict:
 
 
 def has_real_key() -> bool:
-    key = read_env().get("ANTHROPIC_API_KEY", "")
+    env = read_env()
+    key = env.get("OPENAI_API_KEY" if env.get("API_FORMAT", "").lower() == "openai" else "ANTHROPIC_API_KEY", "")
     low = key.lower()
     return bool(key) and not any(m in low for m in ("xxx", "your", "placeholder", "sk-ant"))
 
 
-def write_env(api_key: str, model: str, base_url: str | None) -> None:
-    lines = [
-        "# 由引导工具生成；密钥只保存在本机 .env，不会上传。",
-        f"ANTHROPIC_API_KEY={api_key}",
+def write_env(api_key: str, model: str, base_url: str | None, fmt: str = "anthropic") -> None:
+    prefix = "OPENAI" if fmt == "openai" else "ANTHROPIC"
+    lines = ["# 由引导工具生成；密钥只保存在本机 .env，不会上传。"] + (["API_FORMAT=openai"] if fmt == "openai" else []) + [
+        f"{prefix}_API_KEY={api_key}",
         f"MODEL_ID={model}",
     ]
     if base_url:
-        lines.append(f"ANTHROPIC_BASE_URL={base_url}")
+        lines.append(f"{prefix}_BASE_URL={base_url}")
     ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def test_connection(base_url: str | None, api_key: str, model: str) -> tuple[bool, str]:
+def test_connection(base_url: str | None, api_key: str, model: str, fmt: str = "anthropic") -> tuple[bool, str]:
     try:
         from anthropic import Anthropic
     except ImportError:
@@ -90,13 +98,18 @@ def test_connection(base_url: str | None, api_key: str, model: str) -> tuple[boo
     if base_url:
         kwargs["base_url"] = base_url
     try:
-        client = Anthropic(**kwargs)
+        if fmt == "openai":
+            from blueprint.openai_compat import OpenAICompatClient
+            client = OpenAICompatClient(api_key, base_url, timeout=30.0)
+        else:
+            client = Anthropic(**kwargs)
         resp = client.messages.create(
             model=model, max_tokens=16,
             messages=[{"role": "user", "content": "只回复两个字：成功"}],
         )
         text = "".join(getattr(b, "text", "") for b in resp.content)
-        return True, f"连接成功，模型回复：{text.strip()[:30] or '(空)'}"
+        text = text.strip()[:30]      # 思考模型在 16 个 token 里常常只来得及思考，没有正文也算连上了
+        return True, f"连接成功，模型回复：{text}" if text else "连接成功"
     except Exception as exc:  # noqa: BLE001 —— 把底层错误友好地转述给小白
         return False, f"连接失败：{exc}"
 
@@ -115,14 +128,21 @@ def configure_model() -> bool:
         choice = ask("请输入数字（回车 = 1）: ") or "1"
         provider = PROVIDERS.get(choice, PROVIDERS["1"])
         print(f"\n已选：{provider['name']}")
-        print(f"申请 Key 的网址：{provider['key_page']}")
+        if provider["key_page"]:
+            print(f"申请 Key 的网址：{provider['key_page']}")
+        base = provider["base"]
+        if provider.get("custom_base"):
+            print("接口地址和 Key 向你用的中转服务商要，地址填到 /v1 为止。")
+            base = ask_required("接口地址（例如 https://你的中转地址/v1）：").rstrip("/")
+        elif provider["key"] == "openai":
+            print("提示：OpenAI 官方接口在国内一般连不上；用中转的请重新选「OpenAI 格式的中转或其他服务」。")
         api_key = ask_required("把 API Key 粘贴到这里：")
         model = ask(f"模型名（回车用默认 {provider['model']}）：") or provider["model"]
         print("\n正在测试连接，稍等…")
-        ok, msg = test_connection(provider["base"], api_key, model)
+        ok, msg = test_connection(base, api_key, model, fmt=provider["format"])
         if ok:
             print(f"✅ {msg}")
-            write_env(api_key, model, provider["base"])
+            write_env(api_key, model, base, fmt=provider["format"])
             print("已保存到本机 .env（只保存在你自己电脑上，不会上传）。")
             return True
         print(f"⚠️  {msg}")

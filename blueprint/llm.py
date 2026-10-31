@@ -16,6 +16,7 @@ from pathlib import Path
 from blueprint.schema import coerce_stage_output, validate
 
 DEFAULT_MODEL = "claude-sonnet-4-6"   # 与 .env.example、scaffold 保持一致；tests/test_config_consistency.py 守护
+DEFAULT_OPENAI_MODEL = "gpt-6-luna"   # API_FORMAT=openai 且没填 MODEL_ID 时用；与 tools/wizard.py 一致
 
 
 def load_config() -> None:
@@ -23,11 +24,17 @@ def load_config() -> None:
     load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
 
 
+def api_format() -> str:
+    """接口格式：.env 里 API_FORMAT=openai 时走 OpenAI Chat Completions，否则走 Anthropic Messages。"""
+    load_config()
+    return "openai" if os.getenv("API_FORMAT", "").strip().lower() == "openai" else "anthropic"
+
+
 def has_credentials() -> bool:
     load_config()
+    names = ("OPENAI_API_KEY",) if api_format() == "openai" else ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
     return any(value and not any(marker in value.lower() for marker in ("xxx", "your", "placeholder"))
-               for value in (os.getenv("ANTHROPIC_API_KEY", "").strip(),
-                             os.getenv("ANTHROPIC_AUTH_TOKEN", "").strip()))
+               for value in (os.getenv(n, "").strip() for n in names))
 
 
 class BudgetExceeded(RuntimeError):
@@ -132,7 +139,7 @@ def _matching_brace(text: str, start: int) -> int | None:
 
 
 class AnthropicRunner:
-    """真实模型调用。"""
+    """真实模型调用。.env 里 API_FORMAT=openai 时换成 OpenAI 格式的客户端（blueprint/openai_compat.py），其余逻辑不变。"""
 
     name = "anthropic"
 
@@ -140,12 +147,17 @@ class AnthropicRunner:
                  max_tokens: int | None = None):
         from anthropic import Anthropic
         load_config()
+        openai = client is None and api_format() == "openai"
         if client is None and not has_credentials():
-            raise ValueError("请在 .env 中填写有效的 ANTHROPIC_API_KEY，或使用 --mock 离线预览")
-        self.model = model or os.getenv("MODEL_ID") or DEFAULT_MODEL
+            key_name = "OPENAI_API_KEY" if openai else "ANTHROPIC_API_KEY"
+            raise ValueError(f"请在 .env 中填写有效的 {key_name}，或使用 --mock 离线预览")
+        self.model = model or os.getenv("MODEL_ID") or (DEFAULT_OPENAI_MODEL if openai else DEFAULT_MODEL)
         self.budget = budget or Budget()
-        self.client = client or Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"),
-                                         timeout=120.0, max_retries=0)
+        if openai:
+            from blueprint.openai_compat import OpenAICompatClient
+            self.name = "openai"
+            client = OpenAICompatClient(os.getenv("OPENAI_API_KEY", ""), os.getenv("OPENAI_BASE_URL") or None, 120.0)
+        self.client = client or Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"), timeout=120.0, max_retries=0)
         # 带思考过程的模型（如 deepseek-v4）思考 token 也计入 max_tokens，长 PRD 时 16000 可能不够；
         # 可用环境变量 BLUEPRINT_MAX_OUTPUT_TOKENS 调大。
         self.max_tokens = max_tokens or int(os.getenv("BLUEPRINT_MAX_OUTPUT_TOKENS", "16000"))

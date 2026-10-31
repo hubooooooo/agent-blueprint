@@ -160,8 +160,18 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 | Kimi | `kimi-k2.7-code` | |
 | MiniMax | `MiniMax-M3` | |
 | Anthropic | `claude-sonnet-4-6` | 官方接口，不用填 Base URL |
+| OpenAI（GPT） | `gpt-6-luna` | OpenAI 格式，填法见下面。官方接口在国内一般连不上，用中转时填 `OPENAI_BASE_URL` |
 
 各家完整的 Base URL 见 [.env.example](.env.example)。
+
+用 GPT（OpenAI 官方，或 OpenAI 格式的中转）时改填这几项；终端问答里选「OpenAI（GPT）」或「OpenAI 格式的中转或其他服务」也会帮你写好：
+
+```ini
+API_FORMAT=openai
+OPENAI_API_KEY=你的 Key
+MODEL_ID=gpt-6-luna
+OPENAI_BASE_URL=https://你的中转地址/v1      # 用 OpenAI 官方接口时不填
+```
 
 参考用量：
 

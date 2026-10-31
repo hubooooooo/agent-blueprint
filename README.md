@@ -15,7 +15,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/downloads/)
 
-[快速开始](#快速开始) · [先看效果](#先看效果) · [使用引导](使用引导.md) · [教程视频](https://www.bilibili.com/video/BV17RtD61ETm/)
+[教学版和网页版](#教学版和网页版) · [快速开始](#快速开始) · [先看效果](#先看效果) · [使用引导](使用引导.md) · [教程视频](https://www.bilibili.com/video/BV17RtD61ETm/)
 
 </div>
 
@@ -25,11 +25,11 @@
 
 <table>
 <tr><th align="left" width="16%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">名称</th><th align="left" width="40%">是什么</th><th align="left" width="22%">适合</th><th align="left" width="22%">下载</th></tr>
-<tr><td><b>教学版</b></td><td>没有网页界面：项目文件夹、Python 引擎和命令行。用 AI 编程工具打开文件夹，让它全局阅读项目，再按引导一步步带你做到骨架验收</td><td>课堂上跟着老师学，看清项目里有什么、每一步怎么跑起来</td><td><a href="https://github.com/hubooooooo/agent-blueprint/releases/tag/v1.6">下载学生包</a> · <a href="https://github.com/hubooooooo/agent-blueprint/tree/v1.6">浏览源码</a></td></tr>
+<tr><td><b>教学版</b></td><td>没有网页界面：项目文件夹、Python 引擎和命令行。用 AI 编程工具打开文件夹，让它全局阅读项目，再按引导一步步带你做到骨架验收</td><td>课堂上跟着老师学，看清项目里有什么、每一步怎么跑起来</td><td><a href="https://github.com/hubooooooo/agent-blueprint/releases">去下载页</a> · <a href="https://github.com/hubooooooo/agent-blueprint/tree/v1-maint">浏览源码</a></td></tr>
 <tr><td><b>网页版</b>（本页）</td><td>在教学版的基础上加了本地网页界面：对话式新建产品、回答问题、试玩、导出交接包、检查外部项目</td><td>想直接用的普通用户：下载后双击启动，在网页上操作</td><td><a href="https://github.com/hubooooooo/agent-blueprint/releases/latest">下载</a></td></tr>
 </table>
 
-两个版本都下载到自己电脑上运行，不是网站。教学版由 AI 在终端里运行命令，用法看[教学版的 README](https://github.com/hubooooooo/agent-blueprint/blob/v1.6/README.md)「课堂上这样用」；网页版双击 `启动界面.command`，第一次双击如果被 macOS 拦下，看[常见问题](#常见问题)。
+两个版本都下载到自己电脑上运行，不是网站。教学版由 AI 在终端里运行命令，用法看[教学版的 README](https://github.com/hubooooooo/agent-blueprint/blob/v1-maint/README.md)「课堂上这样用」；网页版双击 `启动界面.command`，第一次双击如果被 macOS 拦下，看[常见问题](#常见问题)。
 
 ## 它能帮你做什么
 
@@ -100,7 +100,7 @@ agent 需要模型支持工具调用。模型不支持、调用出错或费用�
 <table>
 <tr><th align="left" width="20%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">准备</th><th align="left" width="28%">用来做什么</th><th align="left" width="52%">什么时候需要</th></tr>
 <tr><td>模型 API Key</td><td>引擎推导方案、升版、验收</td><td>所有方式都要。推荐 <a href="https://platform.deepseek.com">DeepSeek</a>，便宜且国内可直连，配置方法见下一节</td></tr>
-<tr><td>能读写本地文件的 AI 编程工具</td><td>按方案把代码骨架写进 <code>skeleton/</code></td><td>要代码时才需要，例如 Claude Code、Cursor。只要方案或差距报告可以不装</td></tr>
+<tr><td>能读写本地文件的 AI 编程工具</td><td>按方案把代码骨架写进 <code>skeleton/</code></td><td>要代码时才需要，例如 Codex、Claude Code、Kimi Code、pi。只要方案或差距报告可以不装</td></tr>
 </table>
 
 用方式一或方式三推导完方案后，把下面这段话交给你的 AI 编程工具，让它写骨架：
@@ -147,7 +147,7 @@ agent 需要模型支持工具调用。模型不支持、调用出错或费用�
 
 ### 🤖 方式二：交给能读本地文件的 AI（零安装）
 
-把下面任意一段交给 Claude Desktop、Claude Code、Cursor 这类能读写本地文件的 AI，替换路径和内容：
+把下面任意一段交给 Codex、Claude Code、Kimi Code、pi 这类能读写本地文件、能运行命令的 AI，替换路径和内容：
 
 ```text
 引擎目录：/你的路径/agent-blueprint
@@ -248,9 +248,9 @@ agent 需要模型支持工具调用。DeepSeek 实测支持（Anthropic 格式�
 
 <table>
 <tr><th align="left" width="56%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">操作</th><th align="left" width="22%">模型调用</th><th align="left" width="22%">tokens</th></tr>
-<tr><td>一份完整方案（agent 推导）</td><td>5–7 次</td><td>约 2.5–4 万</td></tr>
+<tr><td>一份完整方案（agent 推导）</td><td>6–11 次，审稿打回重写时更多</td><td>约 3–7 万</td></tr>
 <tr><td>一次反向检查（agent 读代码）</td><td>4–9 次</td><td>约 1–3 万</td></tr>
-<tr><td><code>revise --quick</code></td><td>1 次</td><td>约 0.5 万</td></tr>
+<tr><td><code>revise --quick</code></td><td>1–3 次</td><td>约 0.5–1.5 万</td></tr>
 <tr><td>新建产品时追问一轮</td><td>2–4 次</td><td>约 0.1–0.3 万</td></tr>
 <tr><td>试玩里说一句话</td><td>2–9 次，看它要调几个工具</td><td>约 0.05–0.7 万</td></tr>
 </table>

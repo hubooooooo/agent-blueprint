@@ -28,7 +28,8 @@ class Plan:
     design: dict
     review: dict
     design_attempts: int = 1
-    runner: str = ""
+    runner: str = ""                   # 运行器：anthropic（真实调用）或 mock（离线演示）
+    model: str = ""                    # 实际用的模型，例如 deepseek-v4-flash
     budget: dict = field(default_factory=dict)
     design_mode: str = "fixed"         # agent：领域建模 + 架构设计由 agent 查资料、自检后交卷；fixed：固定两步
     design_note: str = ""              # 没用上 agent 的原因
@@ -36,6 +37,11 @@ class Plan:
     @property
     def title(self) -> str:
         return self.extract.get("title") or "未命名产品"
+
+    @property
+    def model_label(self) -> str:
+        """报告里显示的模型：实际模型名；离线演示或旧结果没有记录时退回运行器名。"""
+        return self.model or self.runner
 
     def to_dict(self) -> dict:
         return {
@@ -50,6 +56,7 @@ class Plan:
             "review": self.review,
             "design_attempts": self.design_attempts,
             "runner": self.runner,
+            "model": self.model,
             "budget": self.budget,
             "design_mode": self.design_mode,
             "design_note": self.design_note,
@@ -195,7 +202,7 @@ def run_plan(input_text: str, runner: Runner, out_dir: Path, resume: bool = Fals
     budget = getattr(runner, "budget", None)
     plan = Plan(input_text=input_text, extract=extract, elements=elements or {}, components=decisions,
                 design=design, review=review, design_attempts=attempts,
-                runner=getattr(runner, "name", ""),
+                runner=getattr(runner, "name", ""), model=getattr(runner, "model", "") or "",
                 budget=budget.summary() if budget else {},
                 design_mode="agent" if use_agent else "fixed", design_note=design_note)
     stages.save_json("plan.json", plan.to_dict())

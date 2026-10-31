@@ -99,10 +99,11 @@ export type Plan = {
     issues?: { section?: string; problem?: string; severity?: "high" | "medium" | "low" }[]
   }
   design_attempts: number
-  budget: { calls?: number; input_tokens?: number; output_tokens?: number }
+  budget: { calls?: number; input_tokens?: number; output_tokens?: number; cache_read_tokens?: number }
 }
 
-export type Usage = { calls: number; input_tokens: number; output_tokens: number }
+// cache_read_tokens：命中缓存的输入，不含在 input_tokens 里；旧数据没有这一项
+export type Usage = { calls: number; input_tokens: number; output_tokens: number; cache_read_tokens?: number }
 
 export type ProductDetail = ProductSummary & {
   path: string

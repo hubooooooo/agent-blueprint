@@ -199,7 +199,7 @@ def run_evals(real: bool = False, runner_factory: Callable[[], object] | None = 
                     if audit.mode != "agent":
                         problems.append(f"没有用上 agent：{audit.mode_note}")
                     b = audit.budget
-                    cost = (f"调用 {b.get('calls', 0)} 次，{b.get('input_tokens', 0) + b.get('output_tokens', 0)} tokens，"
+                    cost = (f"调用 {b.get('calls', 0)} 次，{b.get('input_tokens', 0) + b.get('output_tokens', 0)} tokens（另有 {b.get('cache_read_tokens', 0)} 命中缓存），"
                             f"读过 {audit.agent_stats.get('files_seen', 0)} 个文件")
                     print(f"  {'✅' if not problems else '❌'} audit {case.name} #{i}（{cost}）"
                           + ("" if not problems else "\n     - " + "\n     - ".join(problems)))

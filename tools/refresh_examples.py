@@ -36,7 +36,8 @@ def prompts_fingerprint() -> str:
 def _usage(path: Path) -> str:
     try:
         b = json.loads(path.read_text(encoding="utf-8")).get("budget", {})
-        return f"{b.get('calls', '?')} 次调用、输入 {b.get('input_tokens', '?')} / 输出 {b.get('output_tokens', '?')} tokens"
+        cached = f"，另有 {b['cache_read_tokens']} tokens 命中缓存" if b.get("cache_read_tokens") else ""
+        return f"{b.get('calls', '?')} 次调用、输入 {b.get('input_tokens', '?')} / 输出 {b.get('output_tokens', '?')} tokens{cached}"
     except (OSError, ValueError):
         return "用量未知"
 

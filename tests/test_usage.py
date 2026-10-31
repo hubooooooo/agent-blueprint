@@ -17,14 +17,23 @@ def _budget(calls, inp=100, out=50):
 
 
 def test_records_accumulate_by_kind(tmp_path):
-    assert read_usage(tmp_path)["total"] == {"calls": 0, "input_tokens": 0, "output_tokens": 0}
+    assert read_usage(tmp_path)["total"] == {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0}
     record_usage(tmp_path, "plan", _budget(3))
     record_usage(tmp_path, "plan", _budget(1))
     record_usage(tmp_path, "chat", _budget(2, 10, 5))
     u = read_usage(tmp_path)
-    assert u["plan"] == {"calls": 4, "input_tokens": 400, "output_tokens": 200}
-    assert u["chat"] == {"calls": 2, "input_tokens": 20, "output_tokens": 10}
+    assert u["plan"] == {"calls": 4, "input_tokens": 400, "output_tokens": 200, "cache_read_tokens": 0}
+    assert u["chat"] == {"calls": 2, "input_tokens": 20, "output_tokens": 10, "cache_read_tokens": 0}
     assert u["total"]["calls"] == 6
+
+
+def test_cache_read_tokens_accumulate_and_old_files_read_as_zero(tmp_path):
+    (tmp_path / USAGE_FILE).write_text('{"plan": {"calls": 1, "input_tokens": 5, "output_tokens": 2}}', encoding="utf-8")
+    assert read_usage(tmp_path)["plan"]["cache_read_tokens"] == 0
+    b = Budget()
+    b.record("x", 10, 5, cache_read_tokens=300)
+    record_usage(tmp_path, "plan", b)
+    assert read_usage(tmp_path)["total"] == {"calls": 2, "input_tokens": 15, "output_tokens": 7, "cache_read_tokens": 300}
 
 
 def test_mock_runner_and_empty_budget_write_nothing(tmp_path):
@@ -57,7 +66,7 @@ def test_metered_chat_records_after_stream_and_on_disconnect(tmp_path):
     gen = metered(tmp_path, model, model.events())
     next(gen)
     gen.close()                                   # 用户中途点了停止
-    assert read_usage(tmp_path)["chat"] == {"calls": 4, "input_tokens": 28, "output_tokens": 12}
+    assert read_usage(tmp_path)["chat"] == {"calls": 4, "input_tokens": 28, "output_tokens": 12, "cache_read_tokens": 0}
 
 
 class CountingRunner(MockRunner):

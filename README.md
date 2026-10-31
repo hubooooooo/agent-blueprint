@@ -25,11 +25,11 @@
 
 <table>
 <tr><th align="left" width="16%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">版本</th><th align="left" width="40%">是什么</th><th align="left" width="22%">适合</th><th align="left" width="22%">下载</th></tr>
-<tr><td><b>v1.4 教学版</b></td><td>没有网页界面：项目文件夹、Python 引擎和命令行。用 AI 编程工具打开文件夹，让它全局阅读项目，再按引导一步步带你做到骨架验收</td><td>课堂上跟着老师学，看清项目里有什么、每一步怎么跑起来</td><td><a href="https://github.com/hubooooooo/agent-blueprint/releases/tag/v1.4">下载学生包</a> · <a href="https://github.com/hubooooooo/agent-blueprint/tree/v1.4">浏览源码</a></td></tr>
+<tr><td><b>v1.5 教学版</b></td><td>没有网页界面：项目文件夹、Python 引擎和命令行。用 AI 编程工具打开文件夹，让它全局阅读项目，再按引导一步步带你做到骨架验收</td><td>课堂上跟着老师学，看清项目里有什么、每一步怎么跑起来</td><td><a href="https://github.com/hubooooooo/agent-blueprint/releases/tag/v1.5">下载学生包</a> · <a href="https://github.com/hubooooooo/agent-blueprint/tree/v1.5">浏览源码</a></td></tr>
 <tr><td><b>v2</b>（本页）</td><td>在 v1 的基础上加了本地网页界面：对话式新建产品、回答问题、试玩、导出交接包、检查外部项目</td><td>想直接用的普通用户：下载后双击启动，在网页上操作</td><td><a href="https://github.com/hubooooooo/agent-blueprint/releases/latest">下载</a></td></tr>
 </table>
 
-两个版本都在自己电脑上运行，不是网站。v1.4 由 AI 在终端里运行命令，用法看 [v1.4 的 README](https://github.com/hubooooooo/agent-blueprint/blob/v1.4/README.md)「课堂上这样用」；v2 双击 `启动界面.command`，第一次双击如果被 macOS 拦下，看[常见问题](#常见问题)。
+两个版本都在自己电脑上运行，不是网站。v1.5 由 AI 在终端里运行命令，用法看 [v1.5 的 README](https://github.com/hubooooooo/agent-blueprint/blob/v1.5/README.md)「课堂上这样用」；v2 双击 `启动界面.command`，第一次双击如果被 macOS 拦下，看[常见问题](#常见问题)。
 
 ## 它能帮你做什么
 

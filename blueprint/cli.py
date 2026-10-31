@@ -169,7 +169,7 @@ def cmd_eval(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="blueprint", description="Agent Blueprint 引擎：点子 → 方案；项目 → 差距报告")
+    p = argparse.ArgumentParser(prog="blueprint", description="Agent 工坊 引擎：点子 → 方案；项目 → 差距报告")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def common(sp):

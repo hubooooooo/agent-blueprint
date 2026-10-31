@@ -93,7 +93,7 @@ TOOL_HANDLERS = {**BASE_HANDLERS, "task": run_subagent}
 ## 试一下
 
 ```sh
-cd agent-blueprint
+cd agent-workshop
 python s06_subagent/code.py
 ```
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Agent Blueprint 网页界面（Mac）
+# Agent 工坊 网页界面（Mac）
 # 双击本文件即可：自动检测 / 安装 Python → 初始化环境 → 在浏览器里打开界面。
 # 用的时候别关这个窗口；用完直接关掉即可。
 set -uo pipefail

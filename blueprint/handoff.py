@@ -23,7 +23,7 @@ from blueprint.plain import plain_questions
 from blueprint.workspace import LOG_NAME, PRD_NAME, SKELETON_DIR, current_version, read_prd
 
 ROOT = Path(__file__).resolve().parent.parent
-REPO_URL = "https://github.com/hubooooooo/agent-blueprint"
+REPO_URL = "https://github.com/hubooooooo/agent-workshop"
 _SKIP_PARTS = {".venv", "venv", "node_modules", "__pycache__", ".git", ".pytest_cache"}
 _SKIP_NAMES = {".env", ".DS_Store"}
 
@@ -68,7 +68,7 @@ def render_guide(ws: Path, plan: dict) -> str:
 
     w(f"# {name} · 交接说明")
     w("")
-    w(f"> 需求版本 V{current_version(prd)} · 导出于 {time.strftime('%Y-%m-%d')} · 由 [Agent Blueprint]({REPO_URL}) 生成")
+    w(f"> 需求版本 V{current_version(prd)} · 导出于 {time.strftime('%Y-%m-%d')} · 由 [Agent 工坊]({REPO_URL}) 生成")
     w(">")
     w("> 提出这个想法的人不懂技术。需求和方案都在这个包里，请你（或你的 AI 编程工具）按方案把它做出来。")
     w("")
@@ -137,7 +137,7 @@ def render_guide(ws: Path, plan: dict) -> str:
     w(AI_PROMPT.strip())
     w("```")
     w("")
-    w(f"参考组件来自 Agent Blueprint（MIT 许可），完整仓库与其余组件见 {REPO_URL} 。")
+    w(f"参考组件来自 Agent 工坊（MIT 许可），完整仓库与其余组件见 {REPO_URL} 。")
     w("")
     return "\n".join(out)
 
@@ -194,7 +194,7 @@ def _reference_files(plan: dict) -> list[tuple[Path, str]]:
 
 REFERENCE_README = """# 参考组件
 
-来自 Agent Blueprint（MIT 许可，见 LICENSE），只包含这个产品第一版必选的组件。
+来自 Agent 工坊（MIT 许可，见 LICENSE），只包含这个产品第一版必选的组件。
 
 - 每个目录的 README.md 讲这个机制解决什么问题、生产级要注意什么；code.py 是可运行的最小实现。
 - 个别组件的参考实现会用到别的组件（比如 s15 会加载 s09），这些也一并放进来了，不代表第一版要做。

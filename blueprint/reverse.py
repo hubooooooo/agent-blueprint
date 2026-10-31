@@ -332,7 +332,7 @@ def render_audit(audit: Audit) -> str:
     w(f"# Agent Harness 差距报告 ——「{audit.title}」")
     w("")
     w(f"> 项目路径：`{audit.root}`")
-    w(f"> 推导引擎：Agent Blueprint · 模型：{audit.model_label}")
+    w(f"> 推导引擎：Agent 工坊 · 模型：{audit.model_label}")
     if audit.mode == "agent":
         w(f"> 本报告由 agent 阅读项目代码得出（读过或搜到 {audit.agent_stats.get('files_seen', 0)} 个文件），未运行被检查项目；"
           "组件现状是 agent 核实代码后的判断，「信号覆盖率」按核实结果计算，不代表生产验收通过。")
@@ -463,7 +463,7 @@ def render_should_have_prd(audit: Audit) -> str:
     intent = audit.prd_extract or audit.intent
     facts = intent.get("facts", {})
     out = [f"# {audit.title}", "", f"> {intent.get('one_liner', '')}", "",
-           "本文档由 Agent Blueprint 反向推导生成：这是该项目「本该有」的需求描述。请核对并补全「待确认」项，然后交给 `blueprint plan`。", ""]
+           "本文档由 Agent 工坊 反向推导生成：这是该项目「本该有」的需求描述。请核对并补全「待确认」项，然后交给 `blueprint plan`。", ""]
     for key, label in FACT_KEYS.items():
         f = facts.get(key, {})
         out.append(f"## {label.split('：')[0]}")

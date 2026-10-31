@@ -82,7 +82,7 @@ def test_anthropic_chat_streams_text_and_records_budget():
     runner = AnthropicRunner(model="m", budget=Budget(max_calls=4), client=SimpleNamespace(messages=FakeMessages()))
     model = AnthropicChat(runner)
     assert "".join(model.stream("问题")) == "你好，说说看"
-    assert calls[0]["system"].startswith("你是「Agent Blueprint」的需求访谈助手")
+    assert calls[0]["system"].startswith("你是「Agent 工坊」的需求访谈助手")
     assert runner.budget.calls == 1 and runner.budget.output_tokens == 8
     from blueprint.chat import SUMMARIZE_SCHEMA
     assert model.complete_json("chat_summarize", "对话", SUMMARIZE_SCHEMA) == {"name": "邮件助手", "idea": "整理邮件"}

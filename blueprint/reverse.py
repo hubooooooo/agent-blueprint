@@ -178,6 +178,8 @@ def run_audit(project: Path, runner: Runner, out_dir: Path, prd_text: str | None
         intent_json=_dump({"title": intent.get("title"), "one_liner": intent.get("one_liner"),
                            "facts": intent.get("facts")}),
         gaps_json=_dump([g.to_dict() for g in gaps if g.priority in ("P0", "P1", "P2")]),
+        others_json=_dump([{"id": g.id, "name": g.name, "expected": g.expected, "verdict": g.verdict}
+                           for g in gaps if g.priority not in ("P0", "P1", "P2")]),
         evidence_json=_dump({k: {"strength": v.strength, "hits": [f"{h.file}:{h.line}" for h in v.hits[:5]]}
                              for k, v in inventory.components.items()})),
         REVIEW_SCHEMA, "⑤ 独立复核")

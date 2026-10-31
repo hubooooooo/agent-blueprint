@@ -222,3 +222,25 @@ def test_plan_into_workspace_appends_log_entry(tmp_path):
                        cwd=ROOT, capture_output=True, text=True, env=env)
     assert r.returncode == 0 and not (tmp_path / "plain" / "迭代记录.md").exists()
 
+
+
+def test_review_knows_empty_gap_table_means_all_required_present(tmp_path):
+    """必选组件都具备时差距表为空：复核要被告知这不是漏记，并看到其余组件作参考。"""
+    from blueprint.reverse import run_audit
+    prompts = {}
+
+    class Recording(MockRunner):
+        def complete(self, stage, system, prompt, schema):
+            prompts[stage] = prompt
+            return super().complete(stage, system, prompt, schema)
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "agent.py").write_text("def loop():\n    pass\n", encoding="utf-8")
+    expected = [{"id": "s01", "name": "Agent Loop", "decision": "放弃", "reason": "测试"},
+                {"id": "s13", "name": "Agent 团队", "decision": "放弃", "reason": "测试"}]
+    run_audit(project, Recording(), tmp_path / "out", prd_text="一个助手", log=quiet, expected=expected)
+    review = prompts["audit_review"]
+    assert "差距表为空，表示必选组件都已具备" in review
+    others = review.split("## 其余组件（供参考，不用复核）", 1)[1].split("##", 1)[0]
+    assert '"s13"' in others and '"不需要"' in others

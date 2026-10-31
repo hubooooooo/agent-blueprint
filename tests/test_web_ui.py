@@ -21,7 +21,8 @@ IDEA = "家长拍一张玩具合影，AI 生成亲子剧情脚本。照片涉及
 
 def clear_env(monkeypatch, *names):
     """先 setenv 再 delenv：保证测试里写进 os.environ 的配置在结束后被撤销（delenv 不记录本来就不存在的变量）。"""
-    for name in names or ("ANTHROPIC_API_KEY", "MODEL_ID", "ANTHROPIC_BASE_URL"):
+    for name in names or ("ANTHROPIC_API_KEY", "MODEL_ID", "ANTHROPIC_BASE_URL", "API_FORMAT", "OPENAI_API_KEY",
+                          "OPENAI_BASE_URL"):
         monkeypatch.setenv(name, "")
         monkeypatch.delenv(name)
 
@@ -127,7 +128,7 @@ def test_save_settings_tests_connection_and_keeps_other_env_lines(tmp_path, monk
     clear_env(monkeypatch)
     env = tmp_path / ".env"
     env.write_text("ANTHROPIC_API_KEY=old\nBLUEPRINT_MAX_OUTPUT_TOKENS=32000\n", encoding="utf-8")
-    monkeypatch.setattr(providers, "test_connection", lambda base, key, model: (True, "连接成功"))
+    monkeypatch.setattr(providers, "test_connection", lambda base, key, model, **_: (True, "连接成功"))
     app = App(tmp_path / "out", env_path=env)
 
     res = app.save_settings({"provider": "deepseek", "api_key": "sk-real-0123456789"})
@@ -141,17 +142,51 @@ def test_save_settings_tests_connection_and_keeps_other_env_lines(tmp_path, monk
     assert "0123456789" not in json.dumps(settings)          # 页面只拿到掩码
 
     # 不填 Key 表示沿用已保存的
-    monkeypatch.setattr(providers, "test_connection", lambda base, key, model: (key == "sk-real-0123456789", "x"))
+    monkeypatch.setattr(providers, "test_connection", lambda base, key, model, **_: (key == "sk-real-0123456789", "x"))
     assert app.save_settings({"provider": "anthropic", "api_key": ""})["ok"]
     assert "ANTHROPIC_BASE_URL" not in providers.read_env(env)
 
 
 def test_failed_connection_does_not_write_env(tmp_path, monkeypatch):
     clear_env(monkeypatch)
-    monkeypatch.setattr(providers, "test_connection", lambda base, key, model: (False, "连接失败：401"))
+    monkeypatch.setattr(providers, "test_connection", lambda base, key, model, **_: (False, "连接失败：401"))
     app = App(tmp_path / "out", env_path=tmp_path / ".env")
     assert not app.save_settings({"provider": "glm", "api_key": "sk-real-0123456789"})["ok"]
     assert not (tmp_path / ".env").exists()
+
+
+def test_save_settings_switches_to_openai_format_and_back(tmp_path, monkeypatch):
+    """选 OpenAI 格式的中转：写 API_FORMAT/OPENAI_*，清掉 Anthropic 那套；换回来再反过来。旧格式的 Key 不沿用。"""
+    clear_env(monkeypatch, "API_FORMAT", "OPENAI_API_KEY", "OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "MODEL_ID",
+              "ANTHROPIC_BASE_URL")
+    env = tmp_path / ".env"
+    env.write_text("ANTHROPIC_API_KEY=sk-ant-real-0123456789\nANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic\n"
+                   "BLUEPRINT_TIMEOUT=300\n", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(providers, "test_connection", lambda base, key, model, fmt="anthropic": (calls.append(
+        (base, key, model, fmt)) or True, "连接成功"))
+    app = App(tmp_path / "out", env_path=env)
+
+    with pytest.raises(ValueError, match="API Key"):          # 换了格式，不沿用 Anthropic 的 Key
+        app.save_settings({"provider": "openai-compat", "api_key": "", "base_url": "https://relay.example/v1"})
+    with pytest.raises(ValueError, match="接口地址"):
+        app.save_settings({"provider": "openai-compat", "api_key": "sk-oa-real-0123456789", "base_url": "relay"})
+    assert app.save_settings({"provider": "openai-compat", "api_key": "sk-oa-real-0123456789",
+                              "base_url": "https://relay.example/v1/", "model": "gpt-6-luna"})["ok"]
+    assert calls[-1] == ("https://relay.example/v1", "sk-oa-real-0123456789", "gpt-6-luna", "openai")
+    saved = providers.read_env(env)
+    assert saved["API_FORMAT"] == "openai" and saved["OPENAI_API_KEY"] == "sk-oa-real-0123456789"
+    assert saved["OPENAI_BASE_URL"] == "https://relay.example/v1" and saved["BLUEPRINT_TIMEOUT"] == "300"
+    assert "ANTHROPIC_API_KEY" not in saved and "ANTHROPIC_BASE_URL" not in saved
+    settings = app.settings()
+    assert settings["provider"] == "openai-compat" and settings["base_url"] == "https://relay.example/v1"
+    assert any(p["key"] == "openai" and p["format"] == "openai" for p in settings["providers"])
+
+    assert app.save_settings({"provider": "kimi", "api_key": "sk-kimi-real-0123456789"})["ok"]
+    saved = providers.read_env(env)
+    assert "API_FORMAT" not in saved and "OPENAI_API_KEY" not in saved
+    assert saved["ANTHROPIC_BASE_URL"] == "https://api.moonshot.cn/anthropic"
+    assert app.settings()["provider"] == "kimi"
 
 
 # -- views ---------------------------------------------------------------------

@@ -1,12 +1,23 @@
 // 与 blueprint/web/server.py、blueprint/web/views.py 的返回结构一一对应。
 
-export type Provider = { key: string; name: string; model: string; key_page: string }
+export type Provider = {
+  key: string
+  name: string
+  model: string
+  key_page: string
+  /** 接口格式：anthropic 或 openai */
+  format: string
+  /** 接口地址由用户自己填 */
+  custom_base: boolean
+}
 
 export type Settings = {
   mock: boolean
   configured: boolean
   provider: string
   model: string
+  /** 选「OpenAI 格式的中转或其他服务」时保存的接口地址 */
+  base_url: string
   key_masked: string
   providers: Provider[]
 }
@@ -182,7 +193,7 @@ const enc = encodeURIComponent
 
 export const api = {
   settings: () => request<Settings>("/api/settings"),
-  saveSettings: (body: { provider: string; api_key: string; model: string }) =>
+  saveSettings: (body: { provider: string; api_key: string; model: string; base_url?: string }) =>
     request<{ ok: boolean; message: string }>("/api/settings", body),
   products: () => request<{ products: ProductSummary[] }>("/api/products"),
   product: (slug: string) => request<ProductDetail>(`/api/products/${enc(slug)}`),

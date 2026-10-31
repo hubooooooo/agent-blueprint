@@ -54,14 +54,21 @@ def configure_model() -> bool:
         choice = ask("请输入数字（回车 = 1）: ") or "1"
         provider = PROVIDERS.get(choice, PROVIDERS["1"])
         print(f"\n已选：{provider['name']}")
-        print(f"申请 Key 的网址：{provider['key_page']}")
+        if provider["key_page"]:
+            print(f"申请 Key 的网址：{provider['key_page']}")
+        base = provider["base"]
+        if provider.get("custom_base"):
+            print("接口地址和 Key 向你用的中转服务商要，地址填到 /v1 为止。")
+            base = ask_required("接口地址（例如 https://你的中转地址/v1）：").rstrip("/")
+        elif provider["key"] == "openai":
+            print("提示：OpenAI 官方接口在国内一般连不上；用中转的请重新选「OpenAI 格式的中转或其他服务」。")
         api_key = ask_required("把 API Key 粘贴到这里：")
         model = ask(f"模型名（回车用默认 {provider['model']}）：") or provider["model"]
         print("\n正在测试连接，稍等…")
-        ok, msg = test_connection(provider["base"], api_key, model)
+        ok, msg = test_connection(base, api_key, model, fmt=provider["format"])
         if ok:
             print(f"✅ {msg}")
-            write_env(api_key, model, provider["base"])
+            write_env(api_key, model, base, fmt=provider["format"])
             print("已保存到本机 .env（只保存在你自己电脑上，不会上传）。")
             return True
         print(f"⚠️  {msg}")

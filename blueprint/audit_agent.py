@@ -297,7 +297,8 @@ def investigate(project: Path, inventory: Inventory, runner, out_dir: Path, prd_
         def required(_result: dict) -> list[str]:
             return sorted(set(wanted) | set(flagged))
 
-        expected = "\n".join(f"- {d['id']} {d['name']}：{d['decision']}" for d in prd_decisions)
+        expected = "\n".join(f"- {d['id']} {d['name']}（{COMPONENT_BY_ID[d['id']].one_liner}）：{d['decision']}"
+                             for d in prd_decisions)
         selection = (f"## 这个项目应有的组件（已按{basis}用规则算好，不用你再判断）\n"
                      f"{expected}\n\n必选、二期、待确认的组件都要核实；放弃的可以不交。")
     else:

@@ -178,7 +178,7 @@ bash setup.sh                         # 建虚拟环境、装依赖、生成 .en
 
 # 产品循环
 .venv/bin/python -m blueprint init "酒馆搭子" "一句话点子" --plan   # 建工作区并推导方案
-.venv/bin/python -m blueprint verify out/酒馆搭子                  # 用 PRD 对照 skeleton/
+.venv/bin/python -m blueprint verify out/酒馆搭子                  # 按方案和 PRD 检查 skeleton/
 .venv/bin/python -m blueprint revise out/酒馆搭子 "新需求：……"     # PRD 升版并重推方案
 .venv/bin/python -m blueprint revise out/酒馆搭子 "……" --quick     # 只重算选型，最多 3 次调用
 .venv/bin/python -m blueprint handoff out/酒馆搭子                 # 打包交接包，交给会写代码的人
@@ -259,7 +259,7 @@ agent 需要模型支持工具调用。DeepSeek 实测支持；其他服务商�
 <tr><td><code>prd/V1.md</code>, <code>V2.md</code> …</td><td>每次升版前的快照</td><td>引擎</td></tr>
 <tr><td><code>方案.md</code>, <code>plan.json</code></td><td>待确认清单、组件选型及理由、架构、工具清单、提示词草案、审稿意见</td><td>引擎</td></tr>
 <tr><td><code>skeleton/</code></td><td>代码骨架，唯一允许写产品代码的地方</td><td><strong>你的 AI 编程工具</strong>，引擎不写</td></tr>
-<tr><td><code>verify/</code></td><td>用 PRD 对照骨架的差距报告</td><td>引擎</td></tr>
+<tr><td><code>verify/</code></td><td>按方案的组件选型和 PRD 检查骨架的差距报告</td><td>引擎</td></tr>
 <tr><td><code>迭代记录.md</code></td><td>每一轮：新需求、选型变化、骨架待办、人工验证结论</td><td>引擎记录；人工验证结论只能由你填</td></tr>
 </table>
 

@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from blueprint.llm import StageOutputInvalid, extract_json
 from blueprint.schema import validate
 
 MAX_RESULT_CHARS = 8000
@@ -24,7 +23,9 @@ COMPACT_AT = 240_000        # 工具结果超过这么多字才收起旧的：�
 KEEP_RECENT_ROUNDS = 2      # 最近几轮的工具结果原样保留
 COLLAPSED = "（已收起："
 EMPTY_FINISH_HINT = ("finish 收到的参数是空的：参数太长或 JSON 格式有误时，接口会把它整个丢掉。"
-                     "请不要再调用 finish，直接在文字回复里输出完整的交卷 JSON（只输出 JSON，不加解释）。")
+                     "finish 工具已关闭，请直接在文字回复里输出完整的交卷 JSON（只输出 JSON，不加解释；注意每层括号都要闭合）。")
+TEXT_LAST_HINT = "轮数或费用已用完。请立即在文字回复里输出完整的交卷 JSON，用已掌握的信息交卷。"
+TEXT_NUDGE = "请在文字回复里输出完整的交卷 JSON（只输出 JSON，不加解释）。"
 
 
 class AgentFailed(RuntimeError):
@@ -106,24 +107,27 @@ def run_agent(stage: str, system: str, prompt: str, tools: list[Tool], result_sc
     finish_description：交卷工具的说明，不同场景交的东西不同（结论、下一句话……）。
     last_turn_hint：最后一轮（只剩 finish 可用）时提醒模型的话。
     text_result：模型不调工具、直接说话时，把这段文字变成交卷结果（比如试玩里 Agent 直接回复使用者）；
-        None 时只接受文字里的交卷 JSON。
+        None 时只接受文字里的交卷 JSON，按 result_schema 修补括号后再校验（见 parse_submission）。
+    finish 的参数被接口丢空一次后就不再提供 finish，之后只能在文字里交卷：再调一次多半还是被丢空。
     hooks：额外挂上的钩子，按顺序在 describe 之后、重复调用守卫之前触发。
     """
     if not supports_agent(runner):
         raise AgentFailed("当前模型接入方式不支持工具调用")
     finish = {"name": "finish", "description": finish_description, "input_schema": result_schema}
     handlers = {t.name: t for t in tools}
-    all_specs = [t.spec() for t in tools] + [finish]
+    tool_specs = [t.spec() for t in tools]
     messages: list[dict] = [{"role": "user", "content": prompt}]
     budget = getattr(runner, "budget", None)
     rejects = 0
     nudged = False
+    text_only = False
     label = describe or (lambda name, args: f"{name} {_clip_line(json.dumps(args, ensure_ascii=False, default=str))}")
     chain = [Hook(before_tool=_progress(log, describe))] + list(hooks or []) + [repeat_guard()]
     if check:
         chain.append(Hook(before_finish=check))
 
     def judge(args: dict) -> list[str]:
+        hoist(args, result_schema)
         errors = validate(result_schema, args)
         for hook in chain:
             if errors:
@@ -151,12 +155,14 @@ def run_agent(stage: str, system: str, prompt: str, tools: list[Tool], result_sc
     for turn in range(1, max_turns + 1):
         last = turn == max_turns or _budget_nearly_spent(budget)
         if last:
-            _add_user_text(messages, last_turn_hint)
+            _add_user_text(messages, TEXT_LAST_HINT if text_only else last_turn_hint)
         collapsed, freed = compact(messages, label, COMPACT_AT)
         if collapsed:
             log(f"    ⇣ 收起早先的 {collapsed} 条工具结果（约 {freed:,} 字），需要时可重新查")
             _append(transcript, {"turn": turn, "compacted": collapsed, "chars": freed})
-        response = runner.step(stage, system, messages, [finish] if last else all_specs)
+        # 历史里有工具调用时接口要求必须带工具定义，所以只剩文字交卷时仍带上调查工具
+        offered = (tool_specs or [finish]) if text_only else [finish] if last else tool_specs + [finish]
+        response = runner.step(stage, system, messages, offered)
         blocks = list(_get(response, "content", []) or [])
         # 思考过程、文字、工具调用原样放回历史：DeepSeek / MiniMax 的思考模式要求这样
         messages.append({"role": "assistant", "content": [_as_dict(b) for b in blocks]})
@@ -166,9 +172,12 @@ def run_agent(stage: str, system: str, prompt: str, tools: list[Tool], result_sc
 
         if not uses:
             # 交卷参数太长时有的接口会丢参数，所以也接受写在文字里的交卷 JSON
-            candidate = text_result(_text(blocks)) if text_result else _text_json(blocks)
-            if candidate is not None:
-                errors = judge(candidate)
+            if text_result:
+                candidate, problem = text_result(_text(blocks)), None
+            else:
+                candidate, problem = parse_submission(_text(blocks), result_schema)
+            if candidate is not None or problem:
+                errors = judge(candidate) if candidate is not None else [problem]
                 record["results"].append({"tool": "finish(text)", "errors": errors})
                 _append(transcript, record)
                 if not errors:
@@ -184,7 +193,8 @@ def run_agent(stage: str, system: str, prompt: str, tools: list[Tool], result_sc
             if nudged or last:
                 raise AgentFailed(f"模型没有调用 finish 就结束了（第 {turn} 轮）")
             nudged = True
-            messages.append({"role": "user", "content": "请继续调查，或者调用 finish 工具交卷。不要用文字直接回答。"})
+            messages.append({"role": "user", "content": TEXT_NUDGE if text_only else
+                             "请继续调查，或者调用 finish 工具交卷。不要用文字直接回答。"})
             continue
 
         results = []
@@ -199,6 +209,7 @@ def run_agent(stage: str, system: str, prompt: str, tools: list[Tool], result_sc
                     raise AgentFailed(f"交卷连续 {rejects} 次不合格：参数为空")
                 log("    ↺ 交卷参数为空，改为在文字里交卷")
                 content = EMPTY_FINISH_HINT
+                text_only = True
             elif name == "finish":
                 errors = judge(args)
                 if not errors:
@@ -283,15 +294,83 @@ def _text(blocks: list) -> str:
     return "".join(_get(b, "text", "") or "" for b in blocks if _get(b, "type") == "text")
 
 
-def _text_json(blocks: list) -> dict | None:
-    text = _text(blocks)
-    if "{" not in text:
-        return None
-    try:
-        data = extract_json(text)
-    except (StageOutputInvalid, ValueError):
-        return None
-    return data if isinstance(data, dict) else None
+def parse_submission(text: str, schema: dict) -> tuple[dict | None, str | None]:
+    """从文字回复里取交卷 JSON，返回 (结果, 解析不了时给模型看的报错)；文字里没有 JSON 时两者都是 None。
+
+    长 JSON 里模型常漏掉一个右括号：后面的字段整体落进上一层，末尾少一个括号。
+    所以先补齐末尾的括号，再按 schema 把落错层的字段移回去（hoist）；修出来的结果照样要过全部校验。
+    不像 extract_json 那样退而取里层对象：那样报错会变成「缺少某字段」，模型看了不知道该改哪里。
+    """
+    problem = None
+    for start in (i for i, ch in enumerate(text) if ch == "{"):
+        body = _balanced(text[start:])
+        try:
+            data = json.loads(body if body is not None else text[start:], strict=False)
+        except json.JSONDecodeError as exc:
+            if problem is None:
+                pos = start + exc.pos
+                problem = (f"交卷 JSON 解析不了：第 {pos + 1} 字附近{exc.msg}，"
+                           f"那里是「{text[max(0, pos - 40):pos]}⟨这里⟩{text[pos:pos + 20]}」。请检查括号和引号")
+            continue
+        if not isinstance(data, dict):
+            continue
+        hoist(data, schema)
+        if not schema.get("properties") or set(data) & set(schema["properties"]):
+            return data, None
+    return None, problem
+
+
+def _balanced(text: str) -> str | None:
+    """text 以左括号开头：闭合了就截到那里（丢掉后面的解释或围栏）；到末尾还没闭合就补齐右括号。
+    括号对不上或字符串没结束时返回 None，交给 json 报出具体位置。"""
+    closers: list[str] = []
+    in_str = escaped = False
+    for i, ch in enumerate(text):
+        if in_str:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+        elif ch in "{[":
+            closers.append("}" if ch == "{" else "]")
+        elif ch in "}]":
+            if not closers or closers.pop() != ch:
+                return None
+            if not closers:
+                return text[:i + 1]
+    return None if in_str else text + "".join(reversed(closers))
+
+
+def hoist(data: Any, schema: dict) -> Any:
+    """schema 规定在这一层的字段缺了、却落在了下面某层（那层的 schema 不认它）时，把它移回这一层。原地修改。"""
+    if not isinstance(data, dict) or not isinstance(schema, dict):
+        return data
+    props = schema.get("properties", {})
+    for key in props:
+        if key not in data and (found := _pull(data, schema, key)) is not None:
+            data[key] = found[0]
+    for key, value in data.items():
+        sub = props.get(key, schema.get("additionalProperties"))
+        if isinstance(sub, dict):
+            hoist(value, sub)
+    return data
+
+
+def _pull(data: dict, schema: dict, key: str) -> tuple[Any] | None:
+    props = schema.get("properties", {})
+    for name, child in data.items():
+        sub = props.get(name, schema.get("additionalProperties"))
+        if not isinstance(child, dict) or not isinstance(sub, dict) or key in sub.get("properties", {}):
+            continue
+        if key in child:
+            return (child.pop(key),)
+        if (found := _pull(child, sub, key)) is not None:
+            return found
+    return None
 
 
 def _budget_nearly_spent(budget: Any) -> bool:

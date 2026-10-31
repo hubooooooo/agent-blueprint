@@ -134,6 +134,61 @@ def test_three_empty_finishes_fail():
         run_agent("t", "sys", "go", [], SCHEMA, runner, log=quiet)
 
 
+def test_after_empty_finish_only_text_submission_is_offered():
+    calls = []
+    text = {"type": "text", "text": '{"answer": "42"}'}
+    runner = ScriptRunner([reply(use("finish", {}, "f1")), reply(use("echo", {"text": "a"})), reply(text, stop="end_turn")])
+    assert run_agent("t", "sys", "go", [echo_tool(calls)], SCHEMA, runner, log=quiet) == {"answer": "42"}
+    assert runner.seen_tools == [["echo", "finish"], ["echo"], ["echo"]]
+
+
+def test_text_only_last_turn_asks_for_text_json():
+    runner = ScriptRunner([reply(use("finish", {}, "f1")), reply({"type": "text", "text": '{"answer": "x"}'}, stop="end_turn")],
+                          max_calls=2)
+    run_agent("t", "sys", "go", [], SCHEMA, runner, log=quiet)
+    assert agent_mod.TEXT_LAST_HINT in json.dumps(runner.seen_messages[1], ensure_ascii=False)
+    assert runner.seen_tools[1] == ["finish"]          # 没有调查工具时只能留着 finish，接口要求必须带工具定义
+
+
+def _audit_result():
+    intent = {"title": "x", "one_liner": "y", "facts": {k: {"value": "v", "status": "待确认"} for k in FACT_IDS},
+              "features": {f.id: {"value": "no", "evidence": ""} for f in FEATURES}, "unknowns": ["a"]}
+    return {"intent": intent, "components": {"s01": {"strength": "none", "evidence": []}}}
+
+
+def test_text_json_missing_one_brace_is_repaired_by_schema():
+    """2026-10-29 复查引擎自己时的真实失败：facts 结尾漏一个 }，features、unknowns、components 全落错层。"""
+    from blueprint.audit_agent import RESULT_SCHEMA
+    text = json.dumps(_audit_result(), ensure_ascii=False)
+    cut = text.index(',"features"') if ',"features"' in text else text.index(', "features"')
+    assert text[cut - 1] == "}"
+    broken = text[:cut - 1] + text[cut:]
+    runner = ScriptRunner([reply({"type": "text", "text": broken}, stop="end_turn")])
+    assert run_agent("t", "sys", "go", [], RESULT_SCHEMA, runner, log=quiet) == _audit_result()
+
+
+def test_misplaced_fields_in_finish_args_are_hoisted():
+    from blueprint.audit_agent import RESULT_SCHEMA
+    args = _audit_result()
+    args["intent"]["components"] = args.pop("components")
+    runner = ScriptRunner([reply(use("finish", args, "f1"))])
+    assert run_agent("t", "sys", "go", [], RESULT_SCHEMA, runner, log=quiet) == _audit_result()
+
+
+def test_unparseable_text_json_is_sent_back_with_position():
+    bad = {"type": "text", "text": '{"answer": "a" "b"}'}
+    runner = ScriptRunner([reply(bad, stop="end_turn"), reply({"type": "text", "text": '{"answer": "ok"}'}, stop="end_turn")])
+    assert run_agent("t", "sys", "go", [], SCHEMA, runner, log=quiet) == {"answer": "ok"}
+    sent = runner.seen_messages[1][-1]["content"]
+    assert "解析不了：第 16 字附近" in sent and "⟨这里⟩" in sent
+
+
+def test_parse_submission_skips_preamble_braces_and_trailing_fence():
+    data, problem = agent_mod.parse_submission('格式是 {answer}：\n```json\n{"answer": "a}"}\n```\n完毕', SCHEMA)
+    assert data == {"answer": "a}"} and problem is None
+    assert agent_mod.parse_submission("没有 JSON", SCHEMA) == (None, None)
+
+
 def test_last_turn_offers_only_finish():
     calls = []
     runner = ScriptRunner([reply(use("echo", {"text": "1"})), reply(use("echo", {"text": "2"})),

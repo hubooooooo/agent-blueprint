@@ -174,7 +174,7 @@ MCP error: TypeError: <lambda>() missing 1 required argument: 'query'
 ## 试一下
 
 ```sh
-cd agent-blueprint
+cd agent-workshop
 python s14_mcp_plugin/code.py
 ```
 

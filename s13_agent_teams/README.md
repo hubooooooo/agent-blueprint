@@ -418,7 +418,7 @@ Lead：我已收到认证任务的结果，接下来继续协调其余工作。
 ## 试一下
 
 ```sh
-cd agent-blueprint
+cd agent-workshop
 python s13_agent_teams/code.py
 ```
 

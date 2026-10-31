@@ -132,7 +132,7 @@ for job in fired:
 ## 试一下
 
 ```sh
-cd agent-blueprint
+cd agent-workshop
 python s12_cron_scheduler/code.py
 ```
 

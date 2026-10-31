@@ -99,7 +99,7 @@ def fill_prd(ws: Path, plan: dict, runner, log: Callable[[str], None] = print) -
         data = stages.run(FILL_STAGE, load_prompt(FILL_STAGE).format(prd=prd, facts=facts), FILL_SCHEMA, "⑦ 整理需求文档")
     # 调模型期间 PRD 可能被改过（比如同时保存了回答），重新读一遍再写
     prd = read_prd(ws)
-    note = (f"{MARK}\n> 由 Agent Blueprint 根据第 1、6、7 节和方案整理（V{current_version(prd)}，{time.strftime('%Y-%m-%d')}）。"
+    note = (f"{MARK}\n> 由 Agent 工坊 根据第 1、6、7 节和方案整理（V{current_version(prd)}，{time.strftime('%Y-%m-%d')}）。"
             "要改需求请在界面里加新需求或回答问题，这一节会在下次推导时重新整理。")
     written = []
     for heading, key in SECTIONS:

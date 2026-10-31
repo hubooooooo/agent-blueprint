@@ -173,7 +173,7 @@ except Exception:
 ## 试一下
 
 ```sh
-cd agent-blueprint
+cd agent-workshop
 python s09_memory/code.py
 ```
 

@@ -127,7 +127,7 @@ Agent 收到任务后的典型流程：先调 `todo_write` 列出所有步骤（
 ## 试一下
 
 ```sh
-cd agent-blueprint
+cd agent-workshop
 python s05_todo_write/code.py
 ```
 

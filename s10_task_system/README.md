@@ -188,7 +188,7 @@ complete_task(tests.id)     # ✓ Completed
 ## 试一下
 
 ```sh
-cd agent-blueprint
+cd agent-workshop
 python s10_task_system/code.py
 ```
 

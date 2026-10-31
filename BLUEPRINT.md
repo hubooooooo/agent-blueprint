@@ -234,7 +234,7 @@ Harness = 工具 + 知识 + 观察 + 行动接口 + 权限
 上述 `--mock` 命令只验证流程。真实程序推导需要维护者配置模型接口；也可由当前 AI 按手册分析并注明执行方式。当前引擎交付 Step 1–4 的方案或反向差距报告；Step 5 代码生成是方案确认后的后续任务。Step 5 的产物固定放在 `out/<产品名>/skeleton/`，后续新需求用 `blueprint revise` 升版 PRD 再迭代，见《使用引导.md》的「产品循环」。
 
 ```sh
-cd agent-blueprint
+cd agent-workshop
 pip install -r requirements.txt
 cp .env.example .env   # 配置 ANTHROPIC_API_KEY 与 MODEL_ID
 

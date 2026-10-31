@@ -299,7 +299,7 @@ if compact_requested:
 ## 试一下
 
 ```sh
-cd agent-blueprint
+cd agent-workshop
 python s08_context_compact/code.py
 ```
 

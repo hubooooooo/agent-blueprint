@@ -25,11 +25,11 @@
 
 <table>
 <tr><th align="left" width="16%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">版本</th><th align="left" width="40%">是什么</th><th align="left" width="22%">适合</th><th align="left" width="22%">下载</th></tr>
-<tr><td><b>v1 教学版</b></td><td>没有网页界面：项目文件夹、Python 引擎、终端一问一答。代码骨架靠你自己的 AI 编程工具来写，结果文件自己打开看</td><td>第一次接触，想看清项目里有什么、每一步怎么跑起来</td><td><a href="https://github.com/hubooooooo/agent-blueprint/releases/tag/v1">下载学生包</a> · <a href="https://github.com/hubooooooo/agent-blueprint/tree/v1">浏览源码</a></td></tr>
-<tr><td><b>v2</b>（本页）</td><td>在 v1 的基础上加了本地网页界面：对话式新建产品、回答问题、试玩、导出交接包、检查外部项目</td><td>熟悉流程之后日常使用</td><td><a href="https://github.com/hubooooooo/agent-blueprint/releases/tag/v2">下载学生包</a></td></tr>
+<tr><td><b>v1.1 教学版</b></td><td>没有网页界面：项目文件夹、Python 引擎和命令行。用 AI 编程工具打开文件夹，让它全局阅读项目，再按引导一步步带你做到骨架验收</td><td>课堂上跟着老师学，看清项目里有什么、每一步怎么跑起来</td><td><a href="https://github.com/hubooooooo/agent-blueprint/releases/tag/v1.1">下载学生包</a> · <a href="https://github.com/hubooooooo/agent-blueprint/tree/v1.1">浏览源码</a></td></tr>
+<tr><td><b>v2</b>（本页）</td><td>在 v1 的基础上加了本地网页界面：对话式新建产品、回答问题、试玩、导出交接包、检查外部项目</td><td>想直接用的普通用户：下载后双击启动，在网页上操作</td><td><a href="https://github.com/hubooooooo/agent-blueprint/releases/tag/v2">下载</a></td></tr>
 </table>
 
-两个版本都在自己电脑上运行，不是网站：v1 双击 `启动引擎.command`，v2 双击 `启动界面.command`。v1 的用法看 [v1 的 README](https://github.com/hubooooooo/agent-blueprint/blob/v1/README.md)。
+两个版本都在自己电脑上运行，不是网站。v1.1 由 AI 在终端里运行命令，用法看 [v1.1 的 README](https://github.com/hubooooooo/agent-blueprint/blob/v1.1/README.md)「课堂上这样用」；v2 双击 `启动界面.command`，第一次双击如果被 macOS 拦下，看[常见问题](#常见问题)。
 
 ## 它能帮你做什么
 
@@ -113,7 +113,7 @@ agent 需要模型支持工具调用。模型不支持、调用出错或费用�
 
 ### 🍎 方式一：Mac 双击（零命令行）
 
-**浏览器界面（推荐给不用终端的人）**：双击 **`启动界面.command`**，浏览器会自动打开引擎界面：
+**浏览器界面（推荐给不用终端的人）**：双击 **`启动界面.command`**，浏览器会自动打开引擎界面。第一次双击如果提示「无法打开」，按[常见问题](#常见问题)里的步骤放行一次即可。
 
 1. 「模型设置」里选服务商、粘贴 API Key，点「测试连接并保存」。
 2. 「新建产品」像聊天一样说出想法，AI 追问给谁用、怎么用、什么不能做，信息够了就停（想法说完整了就不再问，只说一句话的一般问三个左右），整理成需求草稿给你确认。确认后开始推导，进度直接显示在对话里。
@@ -290,6 +290,18 @@ agent 需要模型支持工具调用。DeepSeek 实测支持；其他服务商�
 ---
 
 ## 常见问题
+
+**第一次双击提示「无法打开」怎么办？**
+启动文件没有经过苹果签名，从浏览器下载后第一次双击，macOS 会拦下来，提示「Apple 无法验证……是否包含恶意软件」。放行一次，以后双击就正常了：
+
+1. 在弹窗里点「完成」，不要点「移到废纸篓」。
+2. 打开「系统设置」→ 左栏「隐私与安全性」，右边往下翻到「安全性」。
+3. 那里会有一行「已阻止"启动界面.command"……」，点旁边的「仍要打开」。没看到这一行的话，先回去再双击一次启动文件，再回来看。
+4. 输入开机密码（或按指纹），在再次弹出的窗口里点「仍要打开」。
+
+macOS 14 及更早的版本更简单：按住 Control 键点启动文件，选「打开」，再点「打开」。
+
+会用终端的话，也可以一次放行整个文件夹：`xattr -dr com.apple.quarantine 解压出来的文件夹路径`。用 `git clone` 下载的不会被拦。
 
 **没有 API Key 能用吗？**
 方式二可以：由你正在用的 AI 按手册分析，报告里会注明「未运行模型管线」。命令行的 `--mock` 只按关键词占位，用来检查流程能不能跑通，结论不能用于决策。

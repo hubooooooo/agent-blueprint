@@ -49,3 +49,4 @@ def test_student_package_ships_common_bootstrap():
     names = {p.relative_to(ROOT).as_posix() for p in mod.collect_files(ROOT)}
     assert "common/bootstrap.py" in names
     assert "common/__init__.py" in names
+    assert {"AGENTS.md", "CLAUDE.md"} <= names, "学生包要带上给 AI 的说明"

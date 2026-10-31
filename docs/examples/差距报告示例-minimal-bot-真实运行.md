@@ -1,12 +1,12 @@
 # Agent Harness 差距报告 ——「minimal-bot」
 
-> ⚠️ 本文件是引擎**真实运行产物**，未经人工修改：模型 deepseek-v4-flash，2026-10-31 生成，提示词指纹 `prompts:33eb7aba77d0`。
-> 被审计项目为 [evals/reverse/minimal-bot](../../evals/reverse/minimal-bot)（去掉标准答案 expected.json 后的副本），6 次调用、输入 6333 / 输出 8337 tokens，另有 31360 tokens 命中缓存。
+> ⚠️ 本文件是引擎**真实运行产物**，未经人工修改：模型 deepseek-v4-flash，2026-10-31 生成，提示词指纹 `prompts:a5e2a6bc9a65`。
+> 被审计项目为 [evals/reverse/minimal-bot](../../evals/reverse/minimal-bot)（去掉标准答案 expected.json 后的副本），6 次调用、输入 15248 / 输出 8505 tokens，另有 20608 tokens 命中缓存。
 > 复核有异议也是正常的：复核会质疑打分阶段的推测性结论，这正是两阶段设计的目的。
 
 > 项目路径：`<引擎目录>/out/minimal-bot`
 > 推导引擎：Agent Blueprint · 模型：deepseek-v4-flash
-> 本报告由 agent 阅读项目代码得出（读过或搜到 2 个文件），未运行被检查项目；组件现状是 agent 核实代码后的判断，「信号覆盖率」按核实结果计算，不代表生产验收通过。
+> 本报告由 agent 阅读项目代码得出（读过或搜到 1 个文件），未运行被检查项目；组件现状是 agent 核实代码后的判断，「信号覆盖率」按核实结果计算，不代表生产验收通过。
 
 ## 一句话判定
 
@@ -14,38 +14,38 @@
 
 ## 它现在是什么
 
-整个项目只有 32 行 Python 与 3 行 README。它是一个最小 Agent 闭环：读入一行自然语言，把 messages 与唯一的 bash 工具定义发给 Anthropic 模型，模型返回 tool_use 就用 subprocess 在 shell 里执行并把 stdout/stderr 回灌，直到模型不再调用工具为止。历史记录只存在于进程内存，每次启动从空列表开始。没有任何权限、确认、审计、日志、错误处理或配置管理。
+整个项目只有两个文件：README.md 和 src/bot.py，共 32 行。程序用 Anthropic SDK 建一个 while True 的 agent loop，只注册了一个名为 bash 的工具，把模型要求的命令用 subprocess.run(shell=True) 直接执行，stdout 和 stderr 拼起来当 tool_result 回灌。主程序是一个 input() 的 REPL，把用户每句话追加进内存里的 history，再进入 agent_loop。没有权限检查、没有日志、没有超时、没有上下文管理、也没有任何持久化。
 
 | 维度 | 反推结论 | 状态 |
 |---|---|---|
-| 目标 | 让运维工程师用自然语言驱动 shell 命令执行，并由 Agent 汇报结果 | 明确 |
-| 用户 | 运维工程师；在其本机终端同步交互使用（一次一问，src/bot.py:30 阻塞式 input），人机比与是否异步未说明 | 明确 |
-| 核心闭环 | 用户输入一行文本 → 追加为 user 消息 → messages.create（带 bash 工具）→ 若响应含 tool_use 则 run_bash 执行命令并把结果作为 tool_result 回灌 → 循环，直到响应中不再有 tool_use 就返回 | 明确 |
-| 交付物 | 操作与执行结果文本：真实执行的 shell 命令及其 stdout/stderr 汇报，不是代码或文档 | 明确 |
-| 边界 | README 只说明它能删文件、重启服务，未写任何禁止事项或工作区限制；代码里 run_bash 用 shell=True 执行模型给出的任意命令，没有拒绝列表、路径约束或用户确认 | 待确认 |
-| 约束 | 仅见 max_tokens=4000 与必须设置环境变量 MODEL_ID；无时延、并发、成本、合规或模型可替换性方面的说明 | 待确认 |
+| 目标 | 让运维工程师用自然语言驱动 shell 完成操作（含删除文件、重启服务），省去自己敲命令。README 未给出任何可量化的成功标准（如成功率、耗时、误操作率上限）。 | 待确认 |
+| 用户 | 用户是运维工程师，单人本地使用，人机比接近 1:1；交互是同步的——人在终端敲一句、等 Agent 跑完循环、看输出。 | 明确 |
+| 核心闭环 | 用户输入一句话 → 追加进 history → 调 messages.create（带 bash 工具定义）→ 若响应含 tool_use 块则执行 shell 命令、把 stdout+stderr 作为 tool_result 回灌 → 继续循环 → 直到响应里没有 tool_use 块就返回，等待下一次输入。 | 明确 |
+| 交付物 | 交付物是「操作」加上模型的一段文字汇报：命令已在真实环境里执行，产物是宿主机的副作用（文件被删、服务被重启）以及终端上的文字结论。没有代码或文档类产出。 | 待确认 |
+| 边界 | README 和代码都没有写明任何「不能做什么」。代码层面唯一的隐性边界是只暴露了 bash 一个工具，但 shell 本身不受限，等价于没有边界。 | 待确认 |
+| 约束 | 已知约束只有两条：模型 ID 必须由环境变量 MODEL_ID 提供（缺失会 KeyError），单次响应 max_tokens=4000。时延、并发、合规、成本、可用模型清单均未说明；代码里没有超时（subprocess.run 无 timeout），也没有重试。 | 待确认 |
 
 ## 组件差距表（按优先级）
 
 | 优先级 | 组件 | 应有 | 现状 | 判定 | 为什么这类产品需要它 | 去哪看 |
 |---|---|---|---|---|---|---|
-| P0 | s03 权限系统 | 必选 | ❌ 无 | 缺失 | README.md:3 明确「可以执行删除文件、重启服务等操作」，src/bot.py:12 用 subprocess.run(command, shell=True) 执行模型给出的任意命令 | s03_permission/README.md |
+| P0 | s03 权限系统 | 必选 | ❌ 无 | 缺失 | README 明确说可执行删除文件、重启服务；src/bot.py:12 用 subprocess.run(command, shell=True) 无条件执行模型给出的任意命令。 | s03_permission/README.md |
 | P1 | s02 工具系统 | 必选 | 🟡 弱 | 薄弱 | 需要调用外部系统/API/数据源（一切基础，恒选） | s02_tool_use/README.md |
 | ? | s04 钩子系统 | 待确认 | ❌ 无 | 待确认 | 输入未说明：是否需要审计、拦截、埋点、合规记录？ | s04_hooks/README.md |
-| ? | s07 技能加载 | 待确认 | ❌ 无 | 待确认 | 输入未说明：领域知识库是否庞大、需要按需加载？ | s07_skill_loading/README.md |
-| ? | s08 上下文压缩 | 待确认 | ❌ 无 | 待确认 | 输入未说明：会话是否很长、工具输出或日志量是否很大？ | s08_context_compact/README.md |
 | ? | s11 后台任务 | 待确认 | ❌ 无 | 待确认 | 输入未说明：是否有耗时几分钟以上的慢操作需要不阻塞主流程？ | s11_background_tasks/README.md |
 | - | s01 Agent Loop | 必选 | ✅ 有 | 已具备 | 一切基础：循环 + 工具（一切基础，恒选） | s01_agent_loop/README.md |
-| - | s05 任务规划 | 放弃 | ❌ 无 | 不需要 | src/bot.py:16-24 每次只处理模型给出的命令并回灌结果，无计划清单、进度跟踪或中断恢复 | s05_todo_write/README.md |
-| - | s06 子 Agent | 放弃 | ❌ 无 | 不需要 | src/bot.py:23 一次只执行模型当轮给出的命令，无子任务拆分，也无并行探索 | s06_subagent/README.md |
-| - | s09 记忆系统 | 放弃 | ❌ 无 | 不需要 | src/bot.py:28 每次启动 history = []，无落盘或偏好记忆 | s09_memory/README.md |
-| - | s10 任务系统 | 放弃 | ❌ 无 | 不需要 | 无任务状态文件、断点续跑或目标持久化代码，进程退出即丢失全部状态 | s10_task_system/README.md |
-| - | s12 定时调度 | 放弃 | ❌ 无 | 不需要 | src/bot.py:29-32 是交互式 input 循环，完全由人工敲入触发，无定时器 | s12_cron_scheduler/README.md |
-| - | s13 Agent 团队 | 放弃 | ❌ 无 | 不需要 | 单进程单会话，src/bot.py 中无子 Agent、工作区隔离或多任务并行 | s13_agent_teams/README.md |
-| - | s14 MCP 插件 | 放弃 | ❌ 无 | 不需要 | src/bot.py:7-8 只有一个硬编码的 bash 工具，无 MCP 客户端或第三方插件注册机制 | s14_mcp_plugin/README.md |
+| - | s05 任务规划 | 放弃 | ❌ 无 | 不需要 | src/bot.py:16-24 只有单轮工具调用循环，没有计划、进度跟踪或中断恢复机制。 | s05_todo_write/README.md |
+| - | s06 子 Agent | 放弃 | ❌ 无 | 不需要 | 只注册了 bash 一个工具，命令输出直接回填主循环，不存在子任务或并行探索。 | s06_subagent/README.md |
+| - | s07 技能加载 | 放弃 | ❌ 无 | 不需要 | 仓库只有 src/bot.py 和 README.md，无任何知识库或按需加载文档的代码。 | s07_skill_loading/README.md |
+| - | s08 上下文压缩 | 放弃 | ❌ 无 | 不需要 | src/bot.py:28-32 的 history 只是进程内的普通 list，无任何压缩、截断或长度控制设计。 | s08_context_compact/README.md |
+| - | s09 记忆系统 | 放弃 | ❌ 无 | 不需要 | src/bot.py:28 history = [] 在内存里，进程退出即丢失，无任何持久化读写。 | s09_memory/README.md |
+| - | s10 任务系统 | 放弃 | ❌ 无 | 不需要 | 代码中无任务状态保存、断点续跑或恢复逻辑。 | s10_task_system/README.md |
+| - | s12 定时调度 | 放弃 | ❌ 无 | 不需要 | src/bot.py:29-30 仅靠 input(">> ") 人工触发，无任何定时器或调度代码。 | s12_cron_scheduler/README.md |
+| - | s13 Agent 团队 | 放弃 | ❌ 无 | 不需要 | 单进程单会话，src/bot.py 里没有任何多 Agent 或工作区隔离逻辑。 | s13_agent_teams/README.md |
+| - | s14 MCP 插件 | 放弃 | ❌ 无 | 不需要 | src/bot.py:7-8 的 TOOLS 硬编码在源码里，无 MCP、插件或动态注册机制。 | s14_mcp_plugin/README.md |
 | - | s15 集成 Harness | 放弃 | ❌ 无 | 不需要 | 可选组件不足 3 个，直接在 loop 里挂接即可 | s15_integrated_harness/README.md |
-| - | s16 工作流运行时 | 放弃 | ❌ 无 | 不需要 | src/bot.py:18-22 每轮由模型自由决定是否继续调命令，无预定义阶段序列 | s16_workflow_runtime/README.md |
-| - | s17 目标闭环 | 放弃 | ❌ 无 | 不需要 | src/bot.py:21-22 仅以「响应中没有 tool_use」作为结束条件，由模型自身决定停止，无独立评估器 | s17_goal_loop/README.md |
+| - | s16 工作流运行时 | 放弃 | ❌ 无 | 不需要 | 执行哪些命令完全由模型临场决定（src/bot.py:18-23），没有固定阶段序列。 | s16_workflow_runtime/README.md |
+| - | s17 目标闭环 | 放弃 | ❌ 无 | 不需要 | src/bot.py:21-22 仅以「响应里没有 tool_use 块」作为结束条件，没有独立评估器判断任务是否真的完成。 | s17_goal_loop/README.md |
 
 ## 五要素空位
 
@@ -75,37 +75,34 @@
 
 ## 需要项目作者回答的问题
 
-1. 产品是否有可量化的成功标准（如任务完成率、平均轮数、命令一次成功率）？
-2. 是否需要危险命令的二次确认或白名单，还是刻意保持无限制？
-3. 是否需要操作审计日志以满足合规要求？
-4. 目标会话长度与 shell 输出量级，是否需要对长输出截断或压缩历史？
-5. 命令执行是否需要超时、退出码检查与失败重试？
-6. MODEL_ID 之外是否有成本、时延或部署形态（本机/跳板机）的约束？
-7. 是否需要跨会话记住运维习惯或历史决策？
-8. 单用户单机，还是多人并发使用同一机器人？
-9. 【s04 钩子系统】是否需要审计、拦截、埋点、合规记录？（现状：❌ 无）
-10. 【s07 技能加载】领域知识库是否庞大、需要按需加载？（现状：❌ 无）
-11. 【s08 上下文压缩】会话是否很长、工具输出或日志量是否很大？（现状：❌ 无）
-12. 【s11 后台任务】是否有耗时几分钟以上的慢操作需要不阻塞主流程？（现状：❌ 无）
+1. 删除文件、重启服务前是否需要用户二次确认或白名单限制？README 未说明，代码里也没有。
+2. 是否需要把执行过的命令与结果留档（审计/合规），留存多久、存到哪里？
+3. 是否有权限边界（只能在某个工作目录内操作、禁止 sudo 等）？
+4. MODEL_ID 之外还需要哪些配置，部署形态是什么（本地单机 / 跳板机共享 / 容器）？
+5. 命令执行是否需要超时、并发数与成本上限？
+6. 「汇报结果」的验收标准是什么（是否只需文字摘要，还是要结构化结论）？
+7. 是否需要跨会话记住常用命令或历史操作？
+8. 【s04 钩子系统】是否需要审计、拦截、埋点、合规记录？（现状：❌ 无）
+9. 【s11 后台任务】是否有耗时几分钟以上的慢操作需要不阻塞主流程？（现状：❌ 无）
 
 ## 独立复核意见
 
-- 结论：❌ 复核有异议
-- 总评：s02 的薄弱结论大体成立，但部分理由超出产品意图，需要收敛证据；s03 的缺失结论有代码证据支撑，但 P0 应明确以破坏性操作能力为依据，并标注权限策略仍待确认。
-- [medium] s02：「未形成可扩展的多工具体系」超出产品意图：意图只要求调用 shell 执行命令并汇报结果，单个硬编码 bash 工具已满足核心闭环。薄弱结论可保留，但应把依据收敛到 input_schema 无参数校验、shell=True 无路径/参数约束、非零退出码被吞掉等证据上。
-- [low] s03：缺失结论与代码证据成立，但 P0 的依据需要写明来自「可删文件、重启服务」的破坏性操作能力；产品意图未明确要求用户确认或拒绝列表，boundaries 仍为待确认。若保留 P0，应在待确认中标注权限策略范围，避免把未声明的确认机制当成已确定需求。
+- 结论：✅ 复核通过
+- 总评：两条差距结论总体站得住：工具系统确有一个可用的 bash 工具，但缺少按名字分派与参数校验，判为「薄弱」、P1 合理；权限系统在代码里完全不存在，判为「缺失」、P0 也有 README 的破坏性操作作为依据。主要需要修正的是：s02 的 reason 用了不贴合的模板话术；s03 的证据全是反证，需要补一条「未找到任何权限相关线索」的直接缺失证据；s03 的 P0 范围建议写成「危险命令确认、允许清单」。其余 none 组件未列入差距表，若属有意省略，建议说明。整体可以保留原判定。
+- [medium] s02：reason 字段是通用套话「需要调用外部系统/API/数据源（一切基础，恒选）」，与本项目意图（本地单工具 shell 助手，不接外部 API）不对应，也没有解释薄弱点。判定本身（weak、薄弱、P1）与证据表一致：src/bot.py:7-8 有合法的工具定义，src/bot.py:23 无按 b.name 分派、无参数校验。建议把 reason 改写为「工具定义已存在，但执行端不按名字分派、不校验参数、无错误处理」，并说明为何不定为 P0（现有 bash 工具可用、agent 循环已闭合）。
+- [low] s03：「缺失」判定成立：代码里确实没有任何 permission、confirm、allowlist 逻辑。但 evidence 两条都是反证（「执行前没有任何判断」「中间没有插入闸门」），与「缺失=未扫描到任何线索」的措辞不完全吻合，容易让人误以为找到了相关线索、应改判为「薄弱」。建议在 evidence 中显式补一条「全仓未找到 permission、approve、confirm、allowlist 等关键词的任何线索」作为直接的缺失证据。
+- [low] s03：P0 有依据（README 明确写了删除文件、重启服务，且 intent 的 boundaries 为待确认、代码里没有任何边界），因此不构成过度定级。但建议把范围写清楚：最小形态是「危险命令执行前人工确认、命令允许清单」，而不是完整 RBAC，否则容易被读成超出单用户本地 CLI 意图的重型组件。
+- [low] s02：差距表只覆盖 s02、s03 两个组件，而证据摘要里 s04（hooks）、s11（后台或长任务）等多个组件 strength=none 却未列入差距表。若这些组件经判断属于本意图下的可选项（同步 1:1 REPL 不需要后台任务，极简 bot 不需要 hook 注册表）而有意省略，建议在 summary 或表中说明，避免被读成漏检。
 
 ## 证据附录
 
-- **s03 权限系统**：src/bot.py:12 run_bash 用 shell=True 执行任意命令，执行前没有任何拒绝列表、路径限制或用户确认；src/bot.py:23 循环里拿到 tool_use 就直接执行，没有 check_permission 之类的拦截点
-- **s02 工具系统**：src/bot.py:7 TOOLS 只有一个硬编码的 bash 工具定义，未形成可扩展的多工具体系；src/bot.py:8 input_schema 只声明 command 一个 string 必填参数，无进一步参数校验；src/bot.py:12 工具实现直接 subprocess.run(command, shell=True)，无路径/参数约束
-- **s04 钩子系统**：src/bot.py:23 工具执行前后没有任何 hook 注册表或 trigger_hooks 调用，全项目仅 32 行且已通读，无扩展点实现
-- **s07 技能加载**：src/bot.py:18 请求里没有 system 提示或知识注入，也没有技能文件加载逻辑，全项目仅 src/bot.py 与 README 两个文件
-- **s08 上下文压缩**：src/bot.py:28 history 无限累积且无截断/摘要逻辑，也没有对 shell 输出做长度限制，不存在上下文压缩实现
-- **s11 后台任务**：src/bot.py:12 subprocess.run 同步阻塞，无超时、无后台任务队列或结果回查机制
-- **s01 Agent Loop**：src/bot.py:16 定义 agent_loop(messages)，是完整的循环入口；src/bot.py:18 把 messages 与 TOOLS 一起发给模型，max_tokens=4000；src/bot.py:20 从响应中筛出 tool_use 块
+- **s03 权限系统**：src/bot.py:12 subprocess.run(command, shell=True) 对模型给出的任意命令直接执行，执行前没有任何权限判断、确认或路径限制；src/bot.py:23 tool_use 块被原样交给 run_bash，中间没有插入任何 check_permission 之类的闸门
+- **s02 工具系统**：src/bot.py:7 只定义了一个名为 bash 的工具，附 description；src/bot.py:8 input_schema 声明了 command 必填参数，工具定义本身是合法的；src/bot.py:23 执行时完全不看 b.name，一律调用 run_bash，等于没有按名字分派的分发表，也没有参数校验与错误处理
+- **s04 钩子系统**：src/bot.py:16 agent_loop 里既没有 hook 注册表也没有 trigger_hooks 调用，所有逻辑都写死在循环体内
+- **s11 后台任务**：src/bot.py:12 subprocess.run 同步阻塞执行、无 timeout，没有后台任务、队列或轮询机制
+- **s01 Agent Loop**：src/bot.py:17 while True 开启 agent 循环，模型调用工具就继续，不调用就退出；src/bot.py:18 把 messages 与 TOOLS 一起发给 messages.create，取得响应；src/bot.py:20 从响应内容块里筛出 tool_use 块
 - **模型 SDK**：anthropic（src/bot.py:3）
 
-本次审计消耗：模型调用 6 次，输入 6333 tokens，输出 8337 tokens，另有 31360 tokens 命中缓存（按 1/10 计入上限）。
+本次审计消耗：模型调用 6 次，输入 15248 tokens，输出 8505 tokens，另有 20608 tokens 命中缓存（按 1/10 计入上限）。
 
 附：`本该有的PRD.md` 可以直接喂给 `blueprint plan` 生成完整方案。

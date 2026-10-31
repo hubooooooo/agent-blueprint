@@ -432,8 +432,10 @@ def verify_workspace(ws: Path, runner, log: Callable[[str], None] = print, fast:
     if not code_files:
         raise ValueError(f"{skeleton} 里还没有代码，先让 AI 按 方案.md 生成骨架再验证。")
     from blueprint.reverse import run_audit
+    plan_path = ws / "plan.json"
+    expected = json.loads(plan_path.read_text(encoding="utf-8")).get("components") if plan_path.is_file() else None
     audit, doc = run_audit(skeleton, runner, ws / VERIFY_DIR, prd_text=derivation_text(prd_text), resume=False,
-                           log=log, fast=fast)
+                           log=log, fast=fast, expected=expected or None)
     p0 = [f"{g.id} {g.name}" for g in audit.gaps if g.priority == "P0"]
     lines = [f"对照 PRD V{current_version(prd_text)} 检查 skeleton/：必选组件信号覆盖率 {int(audit.completion * 100)}%",
              f"报告：{doc}"]

@@ -72,6 +72,7 @@ class Audit:
     budget: dict = field(default_factory=dict)
     mode: str = "fast"                 # agent：模型读代码核实；fast：关键词扫描
     mode_note: str = ""                # 没用上 agent 的原因（--fast、模型不支持、agent 失败）
+    basis: str = ""                    # 「应有」组件的来源：plan（方案.md 的选型）、prd、previous 或空（反推）
     agent_stats: dict = field(default_factory=dict)
 
     @property
@@ -101,6 +102,7 @@ class Audit:
             "budget": self.budget,
             "mode": self.mode,
             "mode_note": self.mode_note,
+            "basis": self.basis,
             "agent_stats": self.agent_stats,
         }
 
@@ -163,8 +165,11 @@ AGENT_RESERVE_CALLS = 2        # agent 之后还要留给独立复核的调用�
 
 def run_audit(project: Path, runner: Runner, out_dir: Path, prd_text: str | None = None,
               resume: bool = False, log: Callable[[str], None] = print, fast: bool = False,
-              rejudge: bool = False) -> tuple[Audit, Path]:
+              rejudge: bool = False, expected: list[dict] | None = None) -> tuple[Audit, Path]:
     """fast=True 或模型不支持工具调用时走关键词扫描；否则由 agent 读代码核实，失败自动退回扫描。
+
+    expected：已经定好的选型（产品工作区里 方案.md 的组件选型）。给了就按它对照，不再从 PRD 重新判断特征，
+    验收和写骨架时依据的方案才一致；PRD 仍会拆解，用来对照事实。
 
     没给 PRD、输出目录里有同一项目上次 agent 检查的结果时，特征判断沿用上次的（见 previous_features），
     再次检查的差别只来自代码变化，不来自模型判断的波动；rejudge=True 重新判断。
@@ -185,15 +190,20 @@ def run_audit(project: Path, runner: Runner, out_dir: Path, prd_text: str | None
         prd_extract = stages.run("extract", load_prompt("extract").format(
             fact_keys=_fmt_fact_keys(), features=_fmt_features(),
             questions=_fmt_questions(), input=prd_text), EXTRACT_SCHEMA, "② 拆解对照的 PRD")
-        if not fast:
+        if not fast and expected is None:
             prd_extract["features"] = vote_on_features(prd_extract.get("features", {}), prd_text, stages, log,
                                                        label="② 复核特征判断")
         prd_decisions = [d.to_dict() for d in select_components(prd_extract.get("features", {}))]
+    if expected is not None:
+        prd_decisions = [dict(d) for d in expected]
+    basis = "plan" if expected is not None else ("prd" if prd_text else "")
 
     intent, findings, agent_stats = None, None, {}
     use_agent, mode_note = _agent_plan(runner, fast)
-    carried = None if (prd_text or rejudge or resume) else previous_features(Path(out_dir), project)
+    carried = None if (prd_text or expected is not None or rejudge or resume) \
+        else previous_features(Path(out_dir), project)
     if carried:
+        basis = "previous"
         prd_decisions = [d.to_dict() for d in select_components(carried["features"])]
         log(f"  ↻ 特征判断沿用 {carried['date']} 那次检查（要重新判断加 --rejudge）")
     if use_agent:
@@ -201,7 +211,8 @@ def run_audit(project: Path, runner: Runner, out_dir: Path, prd_text: str | None
         try:
             intent, findings, agent_stats = investigate(project, inventory, runner, Path(out_dir), prd_decisions,
                                                         log=log, max_turns=_agent_turns(runner), resume=resume,
-                                                        basis="上次检查的特征判断" if carried else "用户提供的 PRD")
+                                                        basis={"plan": "方案.md 的组件选型", "previous": "上次检查的特征判断"}
+                                                        .get(basis, "用户提供的 PRD"))
         except BudgetExceeded:
             raise
         except Exception as exc:  # noqa: BLE001 —— agent 失败不能让用户卡住，退回扫描写法
@@ -242,7 +253,7 @@ def run_audit(project: Path, runner: Runner, out_dir: Path, prd_text: str | None
                   runner=getattr(runner, "name", ""), model=getattr(runner, "model", "") or "",
                   budget=budget.summary() if budget else {},
                   mode="agent" if findings is not None else "fast", mode_note=mode_note,
-                  agent_stats=agent_stats)
+                  agent_stats=agent_stats, basis=basis)
     stages.save_json("audit.json", audit.to_dict())
     stages.save("本该有的PRD.md", render_should_have_prd(audit))
     doc_path = stages.save("差距报告.md", render_audit(audit))
@@ -332,7 +343,9 @@ def render_audit(audit: Audit) -> str:
         w(">")
         w("> ⚠️ **本报告由 `--mock` 生成，没有调用模型。** 「应有」一列按关键词占位，意图反推多为空白；")
         w("> 配置好 `.env` 后去掉 `--mock` 重新运行，才能得到可用于决策的差距报告。")
-    if audit.prd_extract:
+    if audit.basis == "plan":
+        w("> 对照依据：方案.md 的组件选型（写骨架时依据的同一份方案）；事实对照 PRD")
+    elif audit.prd_extract:
         w("> 对照依据：用户提供的 PRD（组件「应有」按 PRD 判定）")
     elif audit.agent_stats.get("features_from"):
         w(f"> 对照依据：沿用 {audit.agent_stats['features_from']} 那次检查的特征判断，这次只重新核实代码；"
@@ -347,11 +360,15 @@ def render_audit(audit: Audit) -> str:
     w(_cell(intent.get("product_summary")) or _cell(intent.get("one_liner")))
     w("")
     facts = intent.get("facts", {})
+    prd_facts = (audit.prd_extract or {}).get("facts", {})
     w("| 维度 | 反推结论 | 状态 |")
     w("|---|---|---|")
     for key, label in FACT_KEYS.items():
         f = facts.get(key, {})
-        w(f"| {label.split('：')[0]} | {_cell(f.get('value')) or '（空）'} | {f.get('status', '待确认')} |")
+        status = f.get("status", "待确认")
+        if status == "明确" and audit.prd_extract and prd_facts.get(key, {}).get("status") != "明确":
+            status = "按默认假设实现（PRD 待确认）"      # 代码里写死了，不等于需求定了
+        w(f"| {label.split('：')[0]} | {_cell(f.get('value')) or '（空）'} | {status} |")
     w("")
 
     w("## 组件差距表（按优先级）")

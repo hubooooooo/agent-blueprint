@@ -166,3 +166,22 @@ def test_reports_show_actual_model_not_runner_name(tmp_path):
     (project / "agent.py").write_text("def loop():\n    pass\n", encoding="utf-8")
     audit, doc = run_audit(project, NamedModel(), tmp_path / "audit", log=quiet)
     assert audit.model == "deepseek-v4-flash" and "模型：deepseek-v4-flash" in doc.read_text(encoding="utf-8")
+
+
+def test_pending_list_groups_match_terminal_summary(tmp_path):
+    """待确认清单按来源分组、编号连续；终端提示的条数与清单一致，不再只数需求问题。"""
+    from blueprint.render import COMPONENTS_HEADING, NEEDS_HEADING, OPENS_HEADING, pending_groups, pending_summary
+    plan, doc = run_plan("每天定时整理邮件并提醒我", MockRunner(), tmp_path, log=quiet)
+    plan.design["open_questions"] = ["邮件存哪里？", "要不要支持多个邮箱？"]
+    from blueprint.render import render_plan
+    text = render_plan(plan)
+    needs, opens, comps = pending_groups(plan)
+    total = len(needs) + len(opens) + len(comps)
+    block = text.split("## ⚠️ 待确认清单", 1)[1].split("\n## ", 1)[0]
+    numbers = [int(l.split(".", 1)[0]) for l in block.splitlines() if l[:1].isdigit()]
+    assert numbers == list(range(1, total + 1))
+    assert OPENS_HEADING in block and (NEEDS_HEADING in block) == bool(needs) and (COMPONENTS_HEADING in block) == bool(comps)
+    summary = pending_summary(plan)
+    assert "2 个方案留下的问题" in summary
+    if needs:
+        assert summary.startswith(f"{len(needs)} 个需求问题要回答")

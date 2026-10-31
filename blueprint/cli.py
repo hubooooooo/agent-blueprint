@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = Path(os.environ.get("BLUEPRINT_OUT") or ROOT / "out")
 
 
+from blueprint.render import pending_summary  # noqa: E402
 from blueprint.workspace import log_plan, slugify as _slug  # noqa: E402
 
 
@@ -63,9 +64,9 @@ def cmd_plan(args) -> int:
     print(f"正向推导：{name} → {out_dir}")
     plan, doc = run_plan(text, make_runner(args), out_dir, resume=args.resume)
     print(f"\n✅ 方案已生成：{doc}")
-    unknowns = len(plan.extract.get("unknowns", []))
-    if unknowns:
-        print(f"⚠️  有 {unknowns} 个待确认问题，见文档开头。")
+    pending = pending_summary(plan)
+    if pending:
+        print(f"⚠️  待确认：{pending}，见文档开头的待确认清单。")
     log_plan(out_dir, plan, doc)
     return 0
 
@@ -109,9 +110,9 @@ def cmd_init(args) -> int:
             return 3
         log_plan(ws, plan, doc)
         print(f"\n✅ 方案已生成：{doc}")
-        unknowns = len(plan.extract.get("unknowns", []))
-        if unknowns:
-            print(f"⚠️  有 {unknowns} 个待确认问题，回答后写进 PRD.md 第 6 节。")
+        pending = pending_summary(plan)
+        if pending:
+            print(f"⚠️  待确认：{pending}，见 方案.md 开头；回答后写进 PRD.md 第 6 节。")
     else:
         print(f"\n下一步：.venv/bin/python -m blueprint plan \"{ws / 'PRD.md'}\" -o \"{ws}\"")
     return 0

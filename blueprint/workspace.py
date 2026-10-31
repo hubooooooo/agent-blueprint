@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Callable
 
 from blueprint.pipeline import atomic_write
+from blueprint.render import pending_summary
 
 PRD_NAME = "PRD.md"
 LOG_NAME = "迭代记录.md"
@@ -315,7 +316,7 @@ def log_plan(out_dir: Path, plan, doc: Path) -> None:
     append_log(out_dir, f"V{version} · 方案推导", [
         f"方案：{Path(doc).name}（模型 {plan.model_label}，审稿{'通过' if plan.review.get('ok') else '未完全通过，见文末意见'}）",
         f"必选组件：{'、'.join(must)}",
-        f"待确认：{len(plan.extract.get('unknowns', []))} 条，回答写进 PRD.md 第 6 节",
+        f"待确认：{pending_summary(plan) or '无'}，见 方案.md 开头；回答写进 PRD.md 第 6 节",
         "人工验证结论：（待填）",
     ])
 
@@ -413,7 +414,7 @@ def revise_workspace(ws: Path, requirement: str, runner=None, run_plan_flag: boo
                 lines.append("骨架待办：" + "；".join(todo))
         else:
             lines.append("选型变化：无（新需求没有改变组件选型，只需在 skeleton/ 内改工具或提示词）")
-        lines.append(f"待确认：{result['unknowns']} 条，见 方案.md 开头；回答写进 PRD.md 第 6 节")
+        lines.append(f"待确认：{pending_summary(plan) or '无'}，见 方案.md 开头；回答写进 PRD.md 第 6 节")
     else:
         lines.append("本轮未重推方案（--no-plan）；需要时运行 "
                      f"`blueprint plan out/{ws.name}/PRD.md -o out/{ws.name} --resume`")

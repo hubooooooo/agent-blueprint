@@ -53,6 +53,27 @@ def render_mermaid(title: str, components: list[dict], tool_list: list[dict],
     return "\n".join(lines)
 
 
+NEEDS_HEADING = "**需求问题**：请提出想法的人回答，这几条最要紧。"
+OPENS_HEADING = "**方案推导时留下的问题**：多是上面问题的细化，也有写给开发者的备注。先答上面的，这里能答的再补。"
+COMPONENTS_HEADING = "**待确认的组件**：要不要用，取决于后面这个问题。"
+
+
+def pending_groups(plan: "Plan") -> tuple[list[str], list[str], list[dict]]:
+    """待确认清单的三组：需求问题、方案留下的问题、待确认的组件。"""
+    return (list(plan.extract.get("unknowns", [])), list(plan.design.get("open_questions", []) or []),
+            [d for d in plan.components if d["decision"] == "待确认"])
+
+
+def pending_summary(plan: "Plan") -> str:
+    """终端和迭代记录里的一句话，条数与 方案.md 的待确认清单一致；没有待确认项时返回空串。"""
+    needs, opens, comps = pending_groups(plan)
+    extra = "、".join(s for s in (f"{len(opens)} 个方案留下的问题" if opens else "",
+                                  f"{len(comps)} 个待确认组件" if comps else "") if s)
+    if needs:
+        return f"{len(needs)} 个需求问题要回答" + (f"（另有 {extra}）" if extra else "")
+    return f"另有 {extra}" if extra else ""
+
+
 def render_plan(plan: "Plan") -> str:
     ex = plan.extract
     facts = ex.get("facts", {})
@@ -83,21 +104,29 @@ def render_plan(plan: "Plan") -> str:
     w(f"**{plan.title}**：{ex.get('one_liner', '')}")
     w("")
 
-    # 待确认清单放前面，小白最先要看的就是这个
-    unknowns = list(ex.get("unknowns", [])) + list(design.get("open_questions", []) or [])
-    pending_components = [d for d in plan.components if d["decision"] == "待确认"]
+    # 待确认清单放前面，小白最先要看的就是这个。按来源分三组，编号连续，终端提示的条数与这里一致
+    needs, opens, pending_components = pending_groups(plan)
     w("## ⚠️ 待确认清单（答不上就是风险点）")
     w("")
-    if not unknowns and not pending_components:
+    if not (needs or opens or pending_components):
         w("输入信息完整，无待确认项。")
+        w("")
     n = 0
-    for q in unknowns:
-        n += 1
-        w(f"{n}. {q}")
-    for d in pending_components:
-        n += 1
-        w(f"{n}. 【组件 {d['id']} {d['name']}】{describe_feature(d.get('feature', ''))}")
-    w("")
+    for heading, items in ((NEEDS_HEADING, needs), (OPENS_HEADING, opens)):
+        if items:
+            w(heading)
+            w("")
+            for q in items:
+                n += 1
+                w(f"{n}. {q}")
+            w("")
+    if pending_components:
+        w(COMPONENTS_HEADING)
+        w("")
+        for d in pending_components:
+            n += 1
+            w(f"{n}. 【组件 {d['id']} {d['name']}】{describe_feature(d.get('feature', ''))}")
+        w("")
 
     w("## Step 1 · 需求拆解（提取硬事实）")
     w("")

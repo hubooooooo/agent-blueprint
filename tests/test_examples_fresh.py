@@ -4,6 +4,8 @@ import re
 import warnings
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES = [ROOT / "docs/examples/方案示例-玩具剧场-真实运行.md",
             ROOT / "docs/examples/差距报告示例-minimal-bot-真实运行.md"]
@@ -16,6 +18,8 @@ def _fingerprint() -> str:
 
 
 def test_examples_carry_prompt_fingerprint_and_warn_when_stale():
+    if not (ROOT / "tools/refresh_examples.py").is_file():
+        pytest.skip("学生包不带示例刷新脚本")
     current = _fingerprint()
     for path in EXAMPLES:
         text = path.read_text(encoding="utf-8")

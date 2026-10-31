@@ -36,6 +36,41 @@ export type Job = {
   result?: RevisionResult | null
 }
 
+/** 检查过的外部项目（blueprint/web/audits.py）。命令行检查过的也在里面。 */
+export type AuditSummary = {
+  slug: string
+  /** 项目文件夹名 */
+  name: string
+  /** 引擎反推出来的项目名 */
+  title: string
+  root: string
+  /** 跑完了没有：中途失败的只有盘点结果 */
+  finished: boolean
+  completion: number | null
+  /** 一句话判定，比如「有骨架，缺关键机制」 */
+  verdict: string
+  missing: number
+  weak: number
+  /** agent：模型读了代码；fast：关键词扫描 */
+  mode: string
+  updated: number
+}
+
+export type AuditDetail = AuditSummary & {
+  path: string
+  report: string
+  suggested_prd: string
+  /** 没用上 agent 的原因 */
+  mode_note: string
+  /** 特征判断沿用的是哪天那次检查；空表示这次重新判断的 */
+  features_from: string
+  files_seen: number
+  calls: number
+  job: Job | null
+}
+
+export type AuditMode = "recheck" | "rejudge" | "resume"
+
 export type ComponentChange = { id: string; name: string; before: string; after: string }
 export type RevisionResult = { old_version: number; new_version: number; diff: ComponentChange[] }
 
@@ -164,6 +199,12 @@ export const api = {
   playIntro: (slug: string) => request<PlayIntro>(`/api/products/${enc(slug)}/play-intro`, {}),
   reveal: (slug: string) => request<{ ok: boolean }>(`/api/products/${enc(slug)}/reveal`, {}),
   job: (id: string) => request<Job>(`/api/jobs/${enc(id)}`),
+  audits: () => request<{ audits: AuditSummary[] }>("/api/audits"),
+  audit: (slug: string) => request<AuditDetail>(`/api/audits/${enc(slug)}`),
+  pickFolder: () => request<{ path: string }>("/api/audits/pick-folder", {}),
+  createAudit: (path: string) => request<{ slug: string; job: Job }>("/api/audits", { path }),
+  rerunAudit: (slug: string, mode: AuditMode) => request<{ job: Job }>(`/api/audits/${enc(slug)}/run`, { mode }),
+  revealAudit: (slug: string) => request<{ ok: boolean }>(`/api/audits/${enc(slug)}/reveal`, {}),
 }
 
 export const handoffUrl = (slug: string) => `/api/products/${enc(slug)}/handoff`

@@ -15,10 +15,12 @@ import sys
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Callable
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from blueprint import chat, playground, providers
 from blueprint.usage import record_usage
+from blueprint.web.audits import audit_detail, audit_dir_for, list_audits, project_root, resolve_audit
 from blueprint.web.jobs import JobManager, friendly_error
 from blueprint.web.views import list_products, product_detail, resolve_workspace
 
@@ -29,11 +31,13 @@ MAX_BODY = 1_000_000
 class App:
     """一个界面实例的全部状态；测试里换掉 out_root / env_path 即可隔离。"""
 
-    def __init__(self, out_root: Path, env_path: Path = providers.ENV_PATH, mock: bool = False):
+    def __init__(self, out_root: Path, env_path: Path = providers.ENV_PATH, mock: bool = False,
+                 folder_picker: Callable[[], str] | None = None):
         self.out_root = Path(out_root)
         self.env_path = Path(env_path)
         self.mock = mock
         self.jobs = JobManager()
+        self.folder_picker = folder_picker or choose_folder
 
     # -- 模型配置 ------------------------------------------------------------
 
@@ -260,13 +264,90 @@ class App:
         return handoff_filename(ws), build_handoff(ws)
 
     def reveal(self, slug: str) -> None:
-        ws = resolve_workspace(self.out_root, slug)
-        if sys.platform == "darwin":
-            subprocess.run(["open", str(ws)], check=False)
-        elif sys.platform.startswith("win"):
-            os.startfile(ws)  # type: ignore[attr-defined]
-        else:
-            subprocess.run(["xdg-open", str(ws)], check=False)
+        reveal_folder(resolve_workspace(self.out_root, slug))
+
+    # -- 检查外部项目 ----------------------------------------------------------
+
+    def audit(self, slug: str) -> dict:
+        job = self.jobs.latest_for(slug)
+        return {**audit_detail(resolve_audit(self.out_root, slug)), "job": job.to_dict() if job else None}
+
+    def pick_folder(self) -> dict:
+        """弹出 macOS 的选文件夹窗口；点了取消返回空路径。"""
+        return {"path": self.folder_picker()}
+
+    def create_audit(self, body: dict) -> dict:
+        project = check_project_folder(body.get("path") or "")
+        out_dir = audit_dir_for(self.out_root, project)
+        job = self._start_audit(out_dir, project)
+        return {"slug": out_dir.name, "job": job.to_dict()}
+
+    def rerun_audit(self, slug: str, body: dict):
+        """重新检查（该有什么沿用上次的判断）、重新判断（rejudge）、继续检查（续跑中断的那次）。"""
+        out_dir = resolve_audit(self.out_root, slug)
+        mode = body.get("mode")
+        if mode not in ("recheck", "rejudge", "resume"):
+            raise ValueError("不认识的检查方式")
+        root = project_root(out_dir)
+        if not root or not Path(root).is_dir():
+            raise ValueError(f"项目文件夹找不到了（{root or '没有记录'}），可能被移动或删除了。重新选一次文件夹再检查。")
+        return self._start_audit(out_dir, Path(root), rejudge=mode == "rejudge", resume=mode == "resume")
+
+    def _start_audit(self, out_dir: Path, project: Path, rejudge: bool = False, resume: bool = False):
+        if not self.configured():
+            raise ValueError("还没配置模型，先到「模型设置」填好 API Key。")
+
+        def task(log):
+            from blueprint.reverse import run_audit
+            audit, _doc = run_audit(project, self.make_runner(), out_dir, log=log, rejudge=rejudge, resume=resume)
+            log(f"✓ 检查完成：必选组件信号覆盖率 {int(audit.completion * 100)}%")
+
+        return self.jobs.start("audit", out_dir.name, task)
+
+    def reveal_audit(self, slug: str) -> None:
+        reveal_folder(resolve_audit(self.out_root, slug))
+
+
+def reveal_folder(path: Path) -> None:
+    if sys.platform == "darwin":
+        subprocess.run(["open", str(path)], check=False)
+    elif sys.platform.startswith("win"):
+        os.startfile(path)  # type: ignore[attr-defined]
+    else:
+        subprocess.run(["xdg-open", str(path)], check=False)
+
+
+def choose_folder() -> str:
+    """macOS 自带的选文件夹窗口（浏览器拿不到本地文件夹的路径）。返回路径，点了取消返回空串。"""
+    if sys.platform != "darwin":
+        raise ValueError("选文件夹窗口只支持 Mac，请把文件夹路径粘贴到输入框里。")
+    # 先 activate，窗口才会出现在浏览器前面而不是藏在后面
+    script = 'activate\nPOSIX path of (choose folder with prompt "选择要检查的项目文件夹")'
+    try:
+        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=600)
+    except subprocess.TimeoutExpired:
+        return ""
+    if result.returncode != 0:
+        if "-128" in result.stderr:          # 用户点了取消
+            return ""
+        raise ValueError(f"打不开选文件夹窗口：{result.stderr.strip()[:200]}，请把文件夹路径粘贴到输入框里。")
+    return result.stdout.strip()
+
+
+def check_project_folder(raw: str) -> Path:
+    """用户选的或粘贴的项目文件夹。硬盘根目录和用户主目录本身太大，多半是选错了。"""
+    text = raw.strip().strip("'\"")
+    if not text:
+        raise ValueError("先选择要检查的项目文件夹")
+    path = Path(text).expanduser()
+    if not path.is_absolute():
+        raise ValueError("请填完整的文件夹路径（以 / 开头）。在 Finder 里按住 Option 右键文件夹，选「拷贝为路径名称」。")
+    path = path.resolve()
+    if not path.is_dir():
+        raise ValueError(f"找不到这个文件夹：{path}")
+    if path == Path(path.anchor) or path == Path.home().resolve():
+        raise ValueError("这是整个硬盘或你的个人文件夹，太大了。请选具体某个项目的文件夹。")
+    return path
 
 
 def metered(ws: Path, model, events):
@@ -405,6 +486,11 @@ def make_handler(app: App):
                     return self._json(app.settings())
                 if path == "/api/products":
                     return self._json({"products": list_products(app.out_root)})
+                if path == "/api/audits":
+                    return self._json({"audits": list_audits(app.out_root)})
+                m = re.fullmatch(r"/api/audits/([^/]+)", path)
+                if m:
+                    return self._json(app.audit(unquote(m.group(1))))
                 m = re.fullmatch(r"/api/products/([^/]+)", path)
                 if m:
                     return self._json(app.product(unquote(m.group(1))))
@@ -450,6 +536,17 @@ def make_handler(app: App):
                     return self._json(app.create_product(body), 201)
                 if path == "/api/chat/intake":
                     return self._stream(app.intake_chat(body))
+                if path == "/api/audits":
+                    return self._json(app.create_audit(body), 201)
+                if path == "/api/audits/pick-folder":
+                    return self._json(app.pick_folder())
+                m = re.fullmatch(r"/api/audits/([^/]+)/(run|reveal)", path)
+                if m:
+                    slug = unquote(m.group(1))
+                    if m.group(2) == "run":
+                        return self._json({"job": app.rerun_audit(slug, body).to_dict()})
+                    app.reveal_audit(slug)
+                    return self._json({"ok": True})
                 m = re.fullmatch(r"/api/products/([^/]+)/(plan|reveal|chat|answers|revise-chat|revise|play|play-intro)", path)
                 if m:
                     slug, action = unquote(m.group(1)), m.group(2)

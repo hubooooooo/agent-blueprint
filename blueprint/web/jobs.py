@@ -70,7 +70,8 @@ class JobManager:
         with self._lock:
             current = self.latest_for(slug)
             if current and current.status == "running":
-                raise ValueError("这个产品正在推导中，等它跑完再操作。")
+                raise ValueError("这个项目正在检查中，等它跑完再操作。" if kind == "audit"
+                                 else "这个产品正在推导中，等它跑完再操作。")
             job = Job(id=str(next(self._ids)), kind=kind, slug=slug)
             self._jobs[job.id] = job
             self._latest[slug] = job.id

@@ -73,8 +73,9 @@ def cmd_plan(args) -> int:
 def cmd_audit(args) -> int:
     project = Path(args.project)
     prd_text = Path(args.prd).read_text(encoding="utf-8") if args.prd else None
-    out_dir = Path(args.out) if args.out else DEFAULT_OUT / f"audit-{_slug(project.resolve().name)}"
     from blueprint.reverse import run_audit
+    from blueprint.web.audits import audit_dir_for   # 和网页共用：同名的别的项目不覆盖，网页上也看得到
+    out_dir = Path(args.out) if args.out else audit_dir_for(DEFAULT_OUT, project)
     print(f"反向审计：{project} → {out_dir}")
     audit, doc = run_audit(project, make_runner(args), out_dir, prd_text=prd_text, resume=args.resume,
                            fast=args.fast, rejudge=args.rejudge)

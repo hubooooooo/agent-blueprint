@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button"
 import { api, type Job } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
-const STAGES = [
+export type Stage = { mark: string; label: string; desc: string }
+
+export const PLAN_STAGES: Stage[] = [
   { mark: "①", label: "需求拆解", desc: "把想法拆成目标、用户、核心闭环等硬事实" },
   { mark: "②", label: "领域建模", desc: "对应到工具、知识、观察、行动、权限五要素" },
   { mark: "③", label: "组件选型", desc: "按固定规则决定 17 个组件选哪些，不调模型" },
@@ -15,22 +17,54 @@ const STAGES = [
   { mark: "⑦", label: "整理需求文档", desc: "把你说过的、答过的、新加的，写进需求文档各节" },
 ]
 
+/** 检查外部项目的四步，日志格式见 blueprint/reverse.py 的 run_audit。 */
+export const AUDIT_STAGES: Stage[] = [
+  { mark: "①", label: "盘点项目", desc: "列出文件、依赖和入口，只在本机做，不调模型" },
+  { mark: "②", label: "读代码", desc: "agent 读代码，反推这个项目在做什么，逐个核实 17 个组件" },
+  { mark: "③", label: "对照打分", desc: "按固定规则算出它应该有什么，和现在的代码对照" },
+  { mark: "④", label: "独立复核", desc: "换个视角，挑出报告里站不住的判断" },
+]
+
+type Wording = { running: string; failed: string; done: string; hint: string; resume: string }
+
+const PLAN_WORDING: Wording = {
+  running: "正在推导方案",
+  failed: "推导中断",
+  done: "推导完成",
+  hint: "大约需要 2–5 分钟。可以先去做别的，关掉这个页面也不影响；只要别关启动界面的那个终端窗口。",
+  resume: "继续推导",
+}
+
+export const AUDIT_WORDING: Wording = {
+  running: "正在检查",
+  failed: "检查中断",
+  done: "检查完成",
+  hint: "大约需要 3–8 分钟，项目越大越久。可以先去做别的，关掉这个页面也不影响；只要别关启动界面的那个终端窗口。",
+  resume: "继续检查",
+}
+
 type StageState = "todo" | "active" | "done" | "failed"
 
-/** 从任务日志推出每个阶段的状态。日志格式见 blueprint/pipeline.py 的 StageRunner.run。 */
-function stageStates(job: Job) {
+/** 从任务日志推出每个阶段的状态。日志格式见 blueprint/pipeline.py 的 StageRunner.run。
+ *  agent 每调一次工具记一行「· 读 xxx」，进行中的阶段把最新一行显示出来，看得到它在干什么。 */
+function stageStates(job: Job, stages: Stage[]) {
   let current = -1
   let rewrite = false
+  let activity = ""
   for (const line of job.logs) {
-    const idx = STAGES.findIndex((s) => line.includes(s.mark))
-    if (idx >= 0 && (line.includes("▶") || line.includes("↻"))) current = Math.max(current, idx)
+    const idx = stages.findIndex((s) => line.includes(s.mark))
+    if (idx >= 0 && (line.includes("▶") || line.includes("↻"))) {
+      if (idx > current) activity = ""
+      current = Math.max(current, idx)
+    }
     if (line.includes("按审稿意见重写")) rewrite = true
+    if (line.trim().startsWith("· ")) activity = line.trim().slice(2)
   }
-  return STAGES.map((s, i) => {
+  return stages.map((s, i) => {
     let state: StageState = "todo"
     if (job.status === "done" || i < current) state = "done"
     else if (i === current) state = job.status === "failed" ? "failed" : "active"
-    return { ...s, state, note: rewrite && i >= 3 ? "第 2 版" : "" }
+    return { ...s, state, note: rewrite && i >= 3 ? "第 2 版" : "", activity: state === "active" ? activity : "" }
   })
 }
 
@@ -82,15 +116,19 @@ export function JobProgress({
   job,
   onResume,
   compact = false,
+  stages = PLAN_STAGES,
+  wording = PLAN_WORDING,
 }: {
   job: Job
   onResume?: () => void
   compact?: boolean
+  stages?: Stage[]
+  wording?: Wording
 }) {
   const running = job.status === "running"
   const now = useNow(running)
   const elapsed = (job.finished ?? now) - job.started
-  const title = running ? "正在推导方案" : job.status === "failed" ? "推导中断" : "推导完成"
+  const title = running ? wording.running : job.status === "failed" ? wording.failed : wording.done
 
   return (
     <div className={cn(!compact && "rounded-lg border bg-card p-5")}>
@@ -102,13 +140,11 @@ export function JobProgress({
         <span className="font-mono text-xs text-muted-foreground">{duration(elapsed)}</span>
       </div>
       {running && !compact && (
-        <p className="mt-1 text-sm text-muted-foreground">
-          大约需要 2–5 分钟。可以先去做别的，关掉这个页面也不影响；只要别关启动界面的那个终端窗口。
-        </p>
+        <p className="mt-1 text-sm text-muted-foreground">{wording.hint}</p>
       )}
 
       <ol className="mt-3">
-        {stageStates(job).map((s, i) => (
+        {stageStates(job, stages).map((s, i) => (
           <li
             key={s.mark}
             className={cn(
@@ -131,7 +167,11 @@ export function JobProgress({
             <span className="w-6 font-mono text-xs text-muted-foreground">0{i + 1}</span>
             <div className="min-w-0 flex-1">
               <div className={cn("text-sm", s.state === "active" && "font-medium")}>{s.label}</div>
-              {!compact && <div className="text-xs text-muted-foreground">{s.desc}</div>}
+              {!compact && (
+                <div className={cn("text-xs text-muted-foreground", s.activity && "truncate font-mono")} title={s.activity || undefined}>
+                  {s.activity || s.desc}
+                </div>
+              )}
             </div>
             {s.note && <span className="font-mono text-xs text-muted-foreground">{s.note}</span>}
           </li>
@@ -143,7 +183,7 @@ export function JobProgress({
           <p className="text-destructive">{job.error}</p>
           {onResume && (
             <div className="mt-2 flex gap-2">
-              <Button size="sm" onClick={onResume}>继续推导</Button>
+              <Button size="sm" onClick={onResume}>{wording.resume}</Button>
               <Button size="sm" variant="outline" nativeButton={false} render={<a href="#/settings" />}>
                 检查模型设置
               </Button>

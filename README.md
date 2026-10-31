@@ -207,6 +207,15 @@ MODEL_ID=deepseek-v4-flash
 ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 ```
 
+用 GPT（OpenAI 官方，或 OpenAI 格式的中转）时改填这几项。网页「模型设置」和终端问答里选「OpenAI（GPT）」或「OpenAI 格式的中转或其他服务」，也会帮你写好：
+
+```ini
+API_FORMAT=openai
+OPENAI_API_KEY=你的 Key
+MODEL_ID=gpt-6-luna
+OPENAI_BASE_URL=https://你的中转地址/v1      # 用 OpenAI 官方接口时不填
+```
+
 <table>
 <tr><th align="left" width="18%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">服务商</th><th align="left" width="30%">推荐模型</th><th align="left" width="52%">说明</th></tr>
 <tr><td>DeepSeek</td><td><code>deepseek-v4-flash</code></td><td>推荐，项目的真实基线就是用它跑的</td></tr>
@@ -214,11 +223,12 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 <tr><td>Kimi</td><td><code>kimi-k2.7-code</code></td><td></td></tr>
 <tr><td>MiniMax</td><td><code>MiniMax-M3</code></td><td></td></tr>
 <tr><td>Anthropic</td><td><code>claude-sonnet-4-6</code></td><td>官方接口，不用填 Base URL</td></tr>
+<tr><td>OpenAI（GPT）</td><td><code>gpt-6-luna</code></td><td>OpenAI 格式。官方接口在国内一般连不上，用中转时填 <code>OPENAI_BASE_URL</code>。<code>gpt-6-astra</code>、<code>gpt-6.1-sol</code> 在这种格式里不能调用工具，会自动改走固定流程</td></tr>
 </table>
 
 各家完整的 Base URL 见 [.env.example](.env.example)。
 
-agent 需要模型支持工具调用。DeepSeek 实测支持；其他服务商或模型中转可以先测一下，三项都通过就能用 agent：
+agent 需要模型支持工具调用。DeepSeek 实测支持（Anthropic 格式和 OpenAI 格式都试过）；其他服务商或模型中转可以先测一下，三项都通过就能用 agent（这个测试脚本目前只测 Anthropic 格式）：
 
 ```sh
 .venv/bin/python tools/probe_tools.py                          # 测 .env 里配的模型

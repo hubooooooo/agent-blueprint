@@ -44,20 +44,25 @@ class App:
     def configured(self) -> bool:
         if self.mock:
             return True
-        return providers.is_real_key(read_key(self.env_path) or os.environ.get("ANTHROPIC_API_KEY", ""))
+        return providers.is_real_key(read_key(self.env_path) or os.environ.get("ANTHROPIC_API_KEY", "")
+                                     or os.environ.get("OPENAI_API_KEY", ""))
 
     def settings(self) -> dict:
-        env = providers.read_env(self.env_path)
-        key = env.get("ANTHROPIC_API_KEY", "")
-        base = env.get("ANTHROPIC_BASE_URL") or None
-        current = next((p["key"] for p in providers.PROVIDERS.values() if p["base"] == base), "")
+        cfg = providers.current_config(providers.read_env(self.env_path))
+        key, base = cfg["key"], cfg["base"]
+        current = next((p["key"] for p in providers.PROVIDERS.values()
+                        if p["format"] == cfg["format"] and not p.get("custom_base") and p["base"] == base), "")
+        if not current and cfg["format"] == "openai":
+            current = "openai-compat"       # 自己填的接口地址
         return {
             "mock": self.mock,
             "configured": self.configured(),
             "provider": current if providers.is_real_key(key) else "",
-            "model": env.get("MODEL_ID", ""),
+            "model": cfg["model"],
+            "base_url": (base or "") if current == "openai-compat" else "",
             "key_masked": mask(key) if providers.is_real_key(key) else "",
-            "providers": [{k: p[k] for k in ("key", "name", "model", "key_page")}
+            "providers": [{"key": p["key"], "name": p["name"], "model": p["model"], "key_page": p["key_page"],
+                           "format": p["format"], "custom_base": bool(p.get("custom_base"))}
                           for p in providers.PROVIDERS.values()],
         }
 
@@ -65,15 +70,23 @@ class App:
         provider = providers.PROVIDER_BY_KEY.get(body.get("provider", ""))
         if not provider:
             raise ValueError("请选择模型服务商")
-        api_key = (body.get("api_key") or "").strip() or read_key(self.env_path)
+        fmt = provider["format"]
+        saved = providers.current_config(providers.read_env(self.env_path))
+        # 没重新粘贴 Key 时沿用已保存的；换了接口格式就不沿用（另一种格式的 Key 多半不通用）
+        api_key = (body.get("api_key") or "").strip() or (saved["key"] if saved["format"] == fmt else "")
         if not providers.is_real_key(api_key):
             raise ValueError("请粘贴 API Key")
+        base = provider["base"]
+        if provider.get("custom_base"):
+            base = (body.get("base_url") or "").strip().rstrip("/")
+            if not base.startswith(("http://", "https://")):
+                raise ValueError("请填写接口地址，以 http:// 或 https:// 开头，例如 https://你的中转地址/v1")
         model = (body.get("model") or "").strip() or provider["model"]
-        ok, message = providers.test_connection(provider["base"], api_key, model)
+        ok, message = providers.test_connection(base, api_key, model, fmt=fmt)
         if not ok:
             return {"ok": False, "message": message}
-        providers.write_env(api_key, model, provider["base"], path=self.env_path)
-        providers.apply_to_process(api_key, model, provider["base"])
+        providers.write_env(api_key, model, base, path=self.env_path, fmt=fmt)
+        providers.apply_to_process(api_key, model, base, fmt=fmt)
         return {"ok": True, "message": message}
 
     # -- 产品 ----------------------------------------------------------------
@@ -378,7 +391,7 @@ def fill_prd_sections(ws: Path, runner, log) -> None:
 
 
 def read_key(env_path: Path) -> str:
-    return providers.read_env(env_path).get("ANTHROPIC_API_KEY", "")
+    return providers.current_config(providers.read_env(env_path))["key"]
 
 
 def mask(key: str) -> str:

@@ -53,7 +53,7 @@ export function SettingsPage() {
       <TopBar title="模型设置" />
       <ScrollBody className="max-w-2xl">
         <p className="mb-6 text-sm text-muted-foreground">
-          引擎靠大模型对话和推导方案。一份方案约 6 次调用、4 万 tokens；每次推导最多 16 次调用，超了会自动停下，不会无限扣费。
+          引擎靠大模型对话和推导方案。一份方案约 5–7 次调用、2.5–4 万 tokens；每次推导最多 40 次调用、150 万 tokens，超了会自动停下，不会无限扣费。
         </p>
         {settings.mock && (
           <Callout tone="warn" title="离线演示模式">

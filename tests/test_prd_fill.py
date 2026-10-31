@@ -71,5 +71,6 @@ def test_auto_sections_are_output_not_input(tmp_path):
     assert MARK not in strip_auto_sections(after) and "FR1（V1）" not in strip_auto_sections(after)
     # 填完再推导：需求拆解的输入和缓存与没填之前一样
     run_plan(after, MockRunner(), ws, resume=True, log=quiet)
-    assert (ws / "input.md").read_text(encoding="utf-8") == strip_auto_sections(after)
+    from blueprint.workspace import derivation_text
+    assert (ws / "input.md").read_text(encoding="utf-8") == derivation_text(after) == derivation_text(before)
     assert strip_auto_sections(before) == before

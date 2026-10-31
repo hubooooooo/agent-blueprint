@@ -123,8 +123,8 @@ def run_plan(input_text: str, runner: Runner, out_dir: Path, resume: bool = Fals
     覆盖发生在拆解之后、选型之前，拆解阶段的缓存不受影响。
     """
     from blueprint.plan_agent import RESULT_SCHEMA as DESIGN_AGENT_SCHEMA, run_design_agent
-    from blueprint.workspace import strip_auto_sections
-    input_text = strip_auto_sections(input_text)     # 自动整理的 PRD 小节是产物，不当输入
+    from blueprint.workspace import derivation_text
+    input_text = derivation_text(input_text)     # 自动整理的 PRD 小节和模板说明都不当输入
     if not input_text.strip():
         raise ValueError("点子或 PRD 不能为空")
     stages = StageRunner(runner, out_dir, resume=resume, log=log,

@@ -46,6 +46,24 @@ def strip_auto_sections(prd_text: str) -> str:
     return "".join(p.split("\n", 1)[0] + "\n\n" if AUTO_MARK in p else p for p in parts)
 
 
+# PRD 模板里写给人和 AI 工具看的说明（工作区规矩、迭代方式、各节的括号提示）。它们不是需求，
+# 原样交给推导会被拆成「约束」和工具，还会冒出「工作区写文件算不算工具」这类怪问题。
+_TEMPLATE_ROW = re.compile(r"(?m)^\|\s*(工作区|迭代方式)\s*\|.*\n?")
+
+
+def _template_notes() -> set[str]:
+    lines = (l.strip() for l in PRD_TEMPLATE.splitlines())
+    return {l for l in lines if l.startswith("（") and l.endswith("）")}
+
+
+def derivation_text(prd_text: str) -> str:
+    """交给推导和验收的 PRD：去掉自动整理的小节和模板说明，用户写的内容一字不动。"""
+    text = _TEMPLATE_ROW.sub("", strip_auto_sections(prd_text))
+    notes = _template_notes()
+    text = "\n".join(l for l in text.split("\n") if l.strip() not in notes)
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
 def slugify(text: str) -> str:
     text = re.sub(r"[^\w一-鿿-]+", "-", text.strip())[:40].strip("-")
     return text or time.strftime("%Y%m%d-%H%M%S")
@@ -318,7 +336,7 @@ def quick_reselect(prd_text: str, runner, ws: Path, log: Callable[[str], None] =
     from blueprint.pipeline import StageRunner
     from blueprint.rules import select_components
     from blueprint.schema import EXTRACT_SCHEMA, FEATURE_IDS
-    prd_text = strip_auto_sections(prd_text)        # 与 run_plan 同口径，缓存才能互通
+    prd_text = derivation_text(prd_text)        # 与 run_plan 同口径，缓存才能互通
     stages = StageRunner(runner, ws, resume=True, log=log, context={"kind": "plan", "input": prd_text})
     stages.save("input.md", prd_text)
     extract = stages.run("extract", load_prompt("extract").format(
@@ -413,7 +431,8 @@ def verify_workspace(ws: Path, runner, log: Callable[[str], None] = print, fast:
     if not code_files:
         raise ValueError(f"{skeleton} 里还没有代码，先让 AI 按 方案.md 生成骨架再验证。")
     from blueprint.reverse import run_audit
-    audit, doc = run_audit(skeleton, runner, ws / VERIFY_DIR, prd_text=prd_text, resume=False, log=log, fast=fast)
+    audit, doc = run_audit(skeleton, runner, ws / VERIFY_DIR, prd_text=derivation_text(prd_text), resume=False,
+                           log=log, fast=fast)
     p0 = [f"{g.id} {g.name}" for g in audit.gaps if g.priority == "P0"]
     lines = [f"对照 PRD V{current_version(prd_text)} 检查 skeleton/：必选组件信号覆盖率 {int(audit.completion * 100)}%",
              f"报告：{doc}"]

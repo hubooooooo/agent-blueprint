@@ -31,6 +31,23 @@ def test_init_creates_workspace_layout(tmp_path):
     assert PENDING_HEADING in prd
 
 
+def test_template_notes_are_not_derivation_input(tmp_path):
+    """模板里的工作区规矩、迭代方式和括号提示不是需求，交给推导前要去掉；用户写的内容一字不动。"""
+    from blueprint.forward import run_plan
+    from blueprint.workspace import derivation_text
+    ws = _init(tmp_path)
+    prd = (ws / "PRD.md").read_text(encoding="utf-8")
+    prd = prd.replace("## 4. 边界与红线\n", "## 4. 边界与红线\n\n（用户写的括号备注）\n- 不能删邮件\n")
+    text = derivation_text(prd)
+    for note in ("不要写到别处", "迭代方式", "由 AI 按 BLUEPRINT.md", "blueprint revise` 会把新需求"):
+        assert note not in text
+    for kept in ("一个帮我每天整理邮件的助手", "| 当前版本 | V1 |", "（用户写的括号备注）", "- 不能删邮件",
+                 "## 6. 待确认问题与回答", PENDING_HEADING):
+        assert kept in text
+    run_plan(prd, MockRunner(), ws, log=quiet)
+    assert (ws / "input.md").read_text(encoding="utf-8") == text
+
+
 def test_init_refuses_to_overwrite(tmp_path):
     _init(tmp_path)
     with pytest.raises(ValueError, match="已存在"):

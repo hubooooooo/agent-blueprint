@@ -7,7 +7,7 @@ import { ChatPane } from "@/components/chat/chat-pane"
 import { ChatProvider } from "@/components/chat/chat-runtime"
 import { clearChatsExcept, fingerprint } from "@/components/chat/chat-storage"
 import { answersToolkit, reviseToolkit } from "@/components/chat/tool-cards"
-import { Callout, ModeCallouts, Screen, ScrollBody, TopBar, useSettings, useShell } from "@/components/common"
+import { Callout, ModeCallouts, READING, Screen, ScrollBody, TopBar, useSettings, useShell } from "@/components/common"
 import { JobProgress, useJob } from "@/components/job-progress"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -177,7 +177,8 @@ function PlanTabs({
   else if (active === "revise") body = <RevisionTab product={product} reload={reload} running={running} />
   else {
     body = (
-      <ScrollBody>
+      // 概览有右栏，用整个宽度；其余以文字为主，收到阅读宽度（一行四十多个字）
+      <ScrollBody className={active === "overview" ? undefined : READING}>
         <ModeCallouts />
         {progress && <div className="mb-6">{progress}</div>}
         {running && <Callout title="下面还是上一版方案">新方案推导完成后会自动刷新。</Callout>}

@@ -10,11 +10,20 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/downloads/)
 
-[快速开始](#快速开始) · [先看效果](#先看效果) · [使用引导](使用引导.md) · [教程视频](https://www.bilibili.com/video/BV17RtD61ETm/)
+[教学版和网页版](#教学版和网页版) · [课堂上这样用](#快速开始) · [先看效果](#先看效果) · [使用引导](使用引导.md) · [教程视频](https://www.bilibili.com/video/BV17RtD61ETm/)
 
 </div>
 
 ---
+
+## 教学版和网页版
+
+| 名称 | 是什么 | 适合 | 下载 |
+|---|---|---|---|
+| **教学版**（本页） | 没有网页界面：项目文件夹、Python 引擎和命令行。用 AI 编程工具打开文件夹，让它全局阅读项目，再按引导一步步带你做到骨架验收 | 课堂上跟着老师学，看清项目里有什么、每一步怎么跑起来 | [去下载页](https://github.com/hubooooooo/agent-blueprint/releases) |
+| **网页版** | 在教学版的基础上加了本地网页界面：对话式新建产品、回答问题、试玩、导出交接包、检查外部项目 | 想直接用的普通用户：下载后双击启动，在网页上操作 | [下载](https://github.com/hubooooooo/agent-blueprint/releases/latest) · [网页版的 README](https://github.com/hubooooooo/agent-blueprint/blob/main/README.md) |
+
+两个版本都下载到自己电脑上运行，不是网站。
 
 ## 它能帮你做什么
 
@@ -64,7 +73,7 @@ flowchart LR
 
 ## 快速开始
 
-> **课堂上这样用**：用 Claude Code、Cursor 这类 AI 编程工具打开这个文件夹，对它说：
+> **课堂上这样用**：用 Codex、Claude Code、Kimi Code、pi 这类 AI 编程工具打开这个文件夹，对它说：
 >
 > ```text
 > 请先全局阅读这个项目，告诉我里面都有什么，然后按《使用引导.md》带我一步步做，每一步做完停下来等我说继续。
@@ -77,7 +86,7 @@ flowchart LR
 | 准备 | 用来做什么 | 什么时候需要 |
 |---|---|---|
 | 模型 API Key | 引擎推导方案、升版、验收 | 所有方式都要。推荐 [DeepSeek](https://platform.deepseek.com)，便宜且国内可直连，配置方法见下一节 |
-| 能读写本地文件的 AI 编程工具 | 按方案把代码骨架写进 `skeleton/` | 要代码时才需要，例如 Claude Code、Cursor。只要方案或差距报告可以不装 |
+| 能读写本地文件的 AI 编程工具 | 按方案把代码骨架写进 `skeleton/` | 要代码时才需要，例如 Codex、Claude Code、Kimi Code、pi。只要方案或差距报告可以不装 |
 
 用方式一或方式三推导完方案后，把下面这段话交给你的 AI 编程工具，让它写骨架：
 
@@ -97,9 +106,11 @@ flowchart LR
 
 没装 Python 3.10+ 时，它会下载并打开 Python 安装器，装好后重新双击即可。
 
+从浏览器下载的文件，第一次双击可能被 macOS 拦下，提示「无法打开」：到「系统设置 → 隐私与安全性」点「仍要打开」（详细步骤见[网页版 README 的常见问题](https://github.com/hubooooooo/agent-blueprint/blob/main/README.md#常见问题)）。课堂上由 AI 在终端里运行命令，不会遇到这个拦截。
+
 ### 🤖 方式二：交给能读本地文件的 AI（零安装）
 
-把下面任意一段交给 Claude Desktop、Claude Code、Cursor 这类能读写本地文件的 AI，替换路径和内容：
+把下面任意一段交给 Codex、Claude Code、Kimi Code、pi 这类能读写本地文件、能运行命令的 AI，替换路径和内容：
 
 ```text
 引擎目录：/你的路径/agent-blueprint
@@ -130,7 +141,7 @@ bash setup.sh                         # 建虚拟环境、装依赖、生成 .en
 
 # 产品循环
 .venv/bin/python -m blueprint init "酒馆搭子" "一句话点子" --plan   # 建工作区并推导方案
-.venv/bin/python -m blueprint verify out/酒馆搭子                  # 用 PRD 对照 skeleton/
+.venv/bin/python -m blueprint verify out/酒馆搭子                  # 按方案和 PRD 检查 skeleton/
 .venv/bin/python -m blueprint revise out/酒馆搭子 "新需求：……"     # PRD 升版并重推方案
 .venv/bin/python -m blueprint revise out/酒馆搭子 "……" --quick     # 只重算选型，1 次调用
 
@@ -179,6 +190,7 @@ OPENAI_BASE_URL=https://你的中转地址/v1      # 用 OpenAI 官方接口时�
 |---|---|---|
 | 一份完整方案，含一次审稿打回重写 | 6 次 | 约 4 万 |
 | 一次反向检查 | 2 次 | 约 1 万 |
+| 一次验收（`verify`） | 3 次 | 约 1–2 万 |
 | `revise --quick` | 1 次 | 约 0.5 万 |
 
 每次运行默认最多 16 次调用、40 万 tokens，超出会停下并提示续跑，不会无限扣费。
@@ -195,7 +207,7 @@ OPENAI_BASE_URL=https://你的中转地址/v1      # 用 OpenAI 官方接口时�
 | `prd/V1.md`, `V2.md` … | 每次升版前的快照 | 引擎 |
 | `方案.md`, `plan.json` | 待确认清单、组件选型及理由、架构、工具清单、提示词草案、审稿意见 | 引擎 |
 | `skeleton/` | 代码骨架，唯一允许写产品代码的地方 | **你的 AI 编程工具**，引擎不写 |
-| `verify/` | 用 PRD 对照骨架的差距报告 | 引擎 |
+| `verify/` | 按方案的组件选型和 PRD 检查骨架的差距报告 | 引擎 |
 | `迭代记录.md` | 每一轮：新需求、选型变化、骨架待办、人工验证结论 | 引擎记录；人工验证结论只能由你填 |
 
 引擎不负责部署上线和上线后的运行。
@@ -243,6 +255,7 @@ OPENAI_BASE_URL=https://你的中转地址/v1      # 用 OpenAI 官方接口时�
 
 | 位置 | 用途 |
 |---|---|
+| [AGENTS.md](AGENTS.md) · [CLAUDE.md](CLAUDE.md) | 给 AI 的课堂说明：怎么介绍项目、每一步怎么走、哪些事不能做 |
 | [使用引导.md](使用引导.md) | 用户入口：任务模板、产品循环、给 AI 的执行规则 |
 | [BLUEPRINT.md](BLUEPRINT.md) | 五步推导、五要素、七层架构与组件选型表 |
 | [blueprint/](blueprint/) | 引擎：需求拆解、规则选型、方案渲染、源码扫描、产品工作区 |
